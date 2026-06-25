@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+import reminders as rem
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -184,12 +185,14 @@ def create_task(task: TaskCreate):
             (task.title, task.description, task.due_date, task.priority, now),
         )
         row = conn.execute("SELECT * FROM tasks WHERE id = ?", (cur.lastrowid,)).fetchone()
-        return dict(row)
+    rem.create_reminder(row["id"], row["title"], row["due_date"], row["description"])
+    return dict(row)
 
 
 @app.put("/api/tasks/{task_id}")
 def update_task(task_id: int, task: TaskUpdate):
-    data = {k: v for k, v in task.model_dump(exclude_none=True).items() if k in TASK_FIELDS}
+    changes = task.model_dump(exclude_none=True)
+    data = {k: v for k, v in changes.items() if k in TASK_FIELDS}
     if not data:
         raise HTTPException(400, "No fields to update")
     if "done" in data:
@@ -200,13 +203,20 @@ def update_task(task_id: int, task: TaskUpdate):
         row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Task not found")
-        return dict(row)
+    rem.update_reminder(
+        task_id,
+        title=changes.get("title"),
+        due_date=changes.get("due_date"),
+        done=changes.get("done"),
+    )
+    return dict(row)
 
 
 @app.delete("/api/tasks/{task_id}", status_code=204)
 def delete_task(task_id: int):
     with get_db() as conn:
         conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+    rem.delete_reminder(task_id)
 
 
 # --- Note routes ---
@@ -275,12 +285,14 @@ async def webuntis_sync():
                     "UPDATE tasks SET title = ?, description = ?, due_date = ? WHERE webuntis_id = ?",
                     (hw["title"], hw["description"], hw["due_date"], hw["webuntis_id"]),
                 )
+                rem.update_reminder(existing["id"], title=hw["title"], due_date=hw["due_date"])
                 updated_count += 1
             else:
-                conn.execute(
+                cur = conn.execute(
                     "INSERT INTO tasks (title, description, due_date, priority, done, created_at, webuntis_id) VALUES (?, ?, ?, ?, 0, ?, ?)",
                     (hw["title"], hw["description"], hw["due_date"], hw["priority"], now, hw["webuntis_id"]),
                 )
+                rem.create_reminder(cur.lastrowid, hw["title"], hw["due_date"], hw["description"])
                 new_count += 1
         conn.execute("DELETE FROM messages")
         conn.executemany(
