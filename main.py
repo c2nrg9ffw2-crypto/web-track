@@ -16,6 +16,19 @@ import uvicorn
 _sync_executor = ThreadPoolExecutor(max_workers=1)
 
 
+def _run_mudo_in_thread():
+    from mudo import sync_bookings
+    if sys.platform == "win32":
+        loop = asyncio.ProactorEventLoop()
+    else:
+        loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(sync_bookings())
+    finally:
+        loop.close()
+
+
 def _run_webuntis_in_thread():
     from webuntis import sync_all
     if sys.platform == "win32":
@@ -86,6 +99,17 @@ def init_db():
                 sender TEXT,
                 sent_at TEXT,
                 is_read INTEGER DEFAULT 0,
+                synced_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS mudo_bookings (
+                id TEXT PRIMARY KEY,
+                date TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                duration_min INTEGER,
+                title TEXT NOT NULL,
+                instructors TEXT,
+                room TEXT,
+                status TEXT NOT NULL,
                 synced_at TEXT NOT NULL
             );
         """)
@@ -297,6 +321,37 @@ def get_messages():
         ).fetchone()
         return {
             "messages": [dict(r) for r in rows],
+            "last_sync": last_sync["synced_at"] if last_sync else None,
+        }
+
+
+# --- Mudo routes ---
+
+@app.post("/api/mudo/sync")
+async def mudo_sync():
+    loop = asyncio.get_event_loop()
+    bookings = await loop.run_in_executor(_sync_executor, _run_mudo_in_thread)
+    now = datetime.now().isoformat()
+    with get_db() as conn:
+        conn.execute("DELETE FROM mudo_bookings")
+        conn.executemany(
+            "INSERT INTO mudo_bookings (id, date, start_time, duration_min, title, instructors, room, status, synced_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [(b["id"], b["date"], b["start_time"], b["duration_min"], b["title"], b["instructors"], b["room"], b["status"], now) for b in bookings],
+        )
+    return {"synced_bookings": len(bookings)}
+
+
+@app.get("/api/mudo/bookings")
+def get_mudo_bookings():
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM mudo_bookings ORDER BY date ASC, start_time ASC"
+        ).fetchall()
+        last_sync = conn.execute(
+            "SELECT synced_at FROM mudo_bookings ORDER BY synced_at DESC LIMIT 1"
+        ).fetchone()
+        return {
+            "bookings": [dict(r) for r in rows],
             "last_sync": last_sync["synced_at"] if last_sync else None,
         }
 

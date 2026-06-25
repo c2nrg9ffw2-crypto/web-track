@@ -244,6 +244,9 @@
     .badge-irregular   { background: #fef3c7; color: #92400e; font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 999px; }
     .badge-substitution{ background: #e0e7ff; color: #3730a3; font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 999px; }
     .badge-other       { background: var(--border); color: var(--muted);  font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 999px; }
+    .lesson.mudo { border-left-color: #16a34a; }
+    .badge-booked   { background: #dcfce7; color: #15803d; font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 999px; }
+    .badge-waitlist { background: #fef9c3; color: #854d0e; font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 999px; }
 
     /* Messages */
     .msg-card {
@@ -339,6 +342,7 @@
       <div style="display:flex;align-items:center;gap:10px">
         <span id="sync-status" style="font-size:0.8rem;color:var(--muted)"></span>
         <button class="btn btn-primary" id="sync-btn" onclick="syncWebUntis()">Sync WebUntis</button>
+        <button class="btn btn-primary" id="mudo-btn" style="background:#16a34a;border-color:#16a34a" onclick="syncMudo()">Sync Mudo</button>
       </div>
     </div>
     <div id="schedule-view"></div>
@@ -534,6 +538,7 @@
 
   let weekOffset = 0;
   let allLessons = [];
+  let mudoBookings = [];
   let lastSync = null;
 
   function weekMonday(offset) {
@@ -554,13 +559,17 @@
   }
 
   async function loadSchedule() {
-    const data = await api('GET', '/api/schedule');
+    const [data, mudo] = await Promise.all([
+      api('GET', '/api/schedule'),
+      api('GET', '/api/mudo/bookings'),
+    ]);
     allLessons = data.lessons || [];
+    mudoBookings = mudo.bookings || [];
     lastSync = data.last_sync;
-    if (lastSync) {
-      document.getElementById('sync-status').textContent =
-        'Last sync: ' + new Date(lastSync).toLocaleString('en-SE', { dateStyle: 'short', timeStyle: 'short' });
-    }
+    const parts = [];
+    if (lastSync) parts.push('WebUntis: ' + new Date(lastSync).toLocaleString('en-SE', { dateStyle: 'short', timeStyle: 'short' }));
+    if (mudo.last_sync) parts.push('Mudo: ' + new Date(mudo.last_sync).toLocaleString('en-SE', { dateStyle: 'short', timeStyle: 'short' }));
+    if (parts.length) document.getElementById('sync-status').textContent = 'Last sync — ' + parts.join(' · ');
     renderSchedule();
   }
 
@@ -594,42 +603,61 @@
 
     const el = document.getElementById('schedule-view');
 
-    if (!allLessons.length) {
-      el.innerHTML = '<div class="empty">No data yet — click Sync WebUntis to fetch your timetable.</div>';
+    const changes = allLessons.filter(l => l.lesson_code !== 'REGULAR');
+    const mudoInWeek = mudoBookings.filter(b => weekDays.includes(b.date));
+
+    if (!changes.length && !mudoInWeek.length && !allLessons.length) {
+      el.innerHTML = '<div class="empty">No data yet — click Sync WebUntis or Sync Mudo.</div>';
       return;
     }
-
-    // Only keep lessons that deviate from the normal schedule
-    const changes = allLessons.filter(l => l.lesson_code !== 'REGULAR');
 
     const byDay = {};
     for (const date of weekDays) byDay[date] = [];
     for (const l of changes) {
-      if (byDay[l.date] !== undefined) byDay[l.date].push(l);
+      if (byDay[l.date] !== undefined) byDay[l.date].push({ _type: 'lesson', ...l });
+    }
+    for (const b of mudoInWeek) {
+      if (byDay[b.date] !== undefined) byDay[b.date].push({ _type: 'mudo', ...b });
     }
 
     const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
     let html = '';
     for (let i = 0; i < 7; i++) {
       const date = weekDays[i];
-      const lessons = byDay[date];
-      if (!lessons.length) continue;
+      const items = byDay[date].sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
+      if (!items.length) continue;
       const label = dayNames[i] + ' ' + new Date(date + 'T12:00:00').toLocaleDateString('en-SE', { month: 'short', day: 'numeric' });
       html += `<div class="day-block"><div class="day-heading">${label}</div>`;
-      for (const l of lessons) {
-        html += `
-          <div class="lesson${l.cancelled ? ' cancelled' : ''}">
-            <div class="lesson-time">${l.start_time} – ${l.end_time}</div>
-            <div>
-              <div class="lesson-subject">${esc(l.subject || '—')} ${changeBadge(l.lesson_code)}</div>
-              <div class="lesson-meta">${[l.teacher, l.room].filter(Boolean).map(esc).join(' · ')}</div>
-            </div>
-          </div>`;
+      for (const item of items) {
+        if (item._type === 'mudo') {
+          const badge = item.status === 'waitlist'
+            ? '<span class="badge-waitlist">Waitlist</span>'
+            : '<span class="badge-booked">Booked</span>';
+          const dur = item.duration_min ? ` · ${item.duration_min} min` : '';
+          const meta = [item.instructors, item.room].filter(Boolean).map(esc).join(' · ');
+          html += `
+            <div class="lesson mudo">
+              <div class="lesson-time">${item.start_time || ''}${dur}</div>
+              <div>
+                <div class="lesson-subject">${esc(item.title)} ${badge}</div>
+                ${meta ? `<div class="lesson-meta">${meta}</div>` : ''}
+              </div>
+            </div>`;
+        } else {
+          html += `
+            <div class="lesson${item.cancelled ? ' cancelled' : ''}">
+              <div class="lesson-time">${item.start_time} – ${item.end_time}</div>
+              <div>
+                <div class="lesson-subject">${esc(item.subject || '—')} ${changeBadge(item.lesson_code)}</div>
+                <div class="lesson-meta">${[item.teacher, item.room].filter(Boolean).map(esc).join(' · ')}</div>
+              </div>
+            </div>`;
+        }
       }
       html += '</div>';
     }
 
-    if (!html) html = '<div class="empty">No changes this week.</div>';
+    if (!html) html = '<div class="empty">No changes or bookings this week.</div>';
     el.innerHTML = html;
   }
 
@@ -651,6 +679,25 @@
     } finally {
       btn.disabled = false;
       btn.textContent = 'Sync WebUntis';
+    }
+  }
+
+  async function syncMudo() {
+    const btn = document.getElementById('mudo-btn');
+    const status = document.getElementById('sync-status');
+    btn.disabled = true;
+    btn.textContent = 'Browser opening…';
+    status.textContent = 'Log in to Mudo in the browser window that just opened.';
+    try {
+      const result = await api('POST', '/api/mudo/sync');
+      const n = result.synced_bookings;
+      status.textContent = `Mudo synced — ${n} booking${n !== 1 ? 's' : ''} fetched.`;
+      await loadSchedule();
+    } catch (e) {
+      status.textContent = 'Mudo sync failed — check the terminal for details.';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Sync Mudo';
     }
   }
 

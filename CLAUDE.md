@@ -20,7 +20,8 @@ A personal productivity web app that runs as a local server on macOS. It tracks 
 
 ```
 main.py              # FastAPI app — all routes, DB init, models
-webuntis.py          # Playwright automation for syncing the timetable
+webuntis.py          # Playwright automation for syncing the timetable + messages
+mudo.py              # Playwright automation for syncing Mudo.se training bookings
 static/index.html    # Entire frontend (HTML + CSS + JS in one file)
 pyproject.toml       # Dependencies and project metadata
 INTERFACE.md         # Frontend / UI documentation
@@ -57,6 +58,9 @@ Three tables, all created automatically on first run by `init_db()`.
 **messages**
 - `id` (WebUntis message ID, primary key), `subject`, `body` (HTML), `sender`, `sent_at`, `is_read` (0/1), `synced_at`
 
+**mudo_bookings**
+- `id` (TEXT, `"YYYY-MM-DD_HH:MM_title"` composite key), `date` (YYYY-MM-DD), `start_time` (HH:MM), `duration_min` (INTEGER, nullable), `title`, `instructors` (comma-separated), `room`, `status` (`booked` or `waitlist`), `synced_at`
+
 ### Adding new DB columns
 
 New columns go in `CREATE TABLE IF NOT EXISTS` inside `init_db()` **and** as an `ALTER TABLE` statement inside `migrate_db()`. `migrate_db()` catches and ignores the "column already exists" error, so it is safe to re-run. Both functions are called on startup via the `lifespan` handler.
@@ -77,6 +81,8 @@ New columns go in `CREATE TABLE IF NOT EXISTS` inside `init_db()` **and** as an 
 | POST | `/api/webuntis/sync` | Open browser, user logs in, fetch timetable |
 | GET | `/api/schedule` | Return stored lessons + last sync timestamp |
 | GET | `/api/messages` | Return stored messages + last sync timestamp |
+| POST | `/api/mudo/sync` | Open browser, user logs in to Mudo, fetch booked sessions |
+| GET | `/api/mudo/bookings` | Return stored Mudo bookings + last sync timestamp |
 
 ## Key conventions
 
@@ -92,6 +98,6 @@ New columns go in `CREATE TABLE IF NOT EXISTS` inside `init_db()` **and** as an 
 
 - New API routes go in `main.py` following the existing pattern.
 - New frontend sections go in `static/index.html` — add a tab button, a `<div id="name-tab" class="tab">`, and matching JS functions. Notes and Schedule tabs lazy-load on first open; follow the same pattern.
-- If a new feature needs browser automation, add a function to `webuntis.py`.
+- If a new feature needs browser automation, add a new file (e.g. `mudo.py`) or a function to `webuntis.py`; follow the `_run_webuntis_in_thread` / `_run_mudo_in_thread` thread-executor pattern in `main.py`.
 - The Schedule tab **only displays lessons where `lesson_code != "REGULAR"`** — regular lessons are intentionally hidden. Keep this filter in mind when editing schedule display logic.
 - Homework tasks synced from WebUntis are identified by a non-null `webuntis_id`. On re-sync, their `title`/`description`/`due_date` are updated but `done` is never reset.
