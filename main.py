@@ -1,0 +1,315 @@
+import asyncio
+import sqlite3
+import sys
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager, contextmanager
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+import uvicorn
+
+_sync_executor = ThreadPoolExecutor(max_workers=1)
+
+
+def _run_webuntis_in_thread():
+    from webuntis import sync_all
+    if sys.platform == "win32":
+        loop = asyncio.ProactorEventLoop()
+    else:
+        loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(sync_all())
+    finally:
+        loop.close()
+
+
+DB_PATH = Path.home() / ".local" / "share" / "taskboard" / "data.db"
+
+TASK_FIELDS = {"title", "description", "due_date", "priority", "done"}
+NOTE_FIELDS = {"title", "content"}
+
+
+@contextmanager
+def get_db():
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def init_db():
+    with get_db() as conn:
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                description TEXT,
+                due_date TEXT,
+                priority TEXT DEFAULT 'medium',
+                done INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL,
+                webuntis_id TEXT
+            );
+            CREATE TABLE IF NOT EXISTS notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                content TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS schedule_lessons (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                subject TEXT,
+                teacher TEXT,
+                room TEXT,
+                cancelled INTEGER DEFAULT 0,
+                lesson_code TEXT DEFAULT 'REGULAR',
+                synced_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY,
+                subject TEXT,
+                body TEXT,
+                sender TEXT,
+                sent_at TEXT,
+                is_read INTEGER DEFAULT 0,
+                synced_at TEXT NOT NULL
+            );
+        """)
+
+
+def migrate_db():
+    with get_db() as conn:
+        for stmt in [
+            "ALTER TABLE schedule_lessons ADD COLUMN lesson_code TEXT DEFAULT 'REGULAR'",
+            "ALTER TABLE tasks ADD COLUMN webuntis_id TEXT",
+        ]:
+            try:
+                conn.execute(stmt)
+            except Exception:
+                pass
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    migrate_db()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
+
+
+# --- Models ---
+
+class TaskCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    due_date: Optional[str] = None
+    priority: str = "medium"
+
+
+class TaskUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    due_date: Optional[str] = None
+    priority: Optional[str] = None
+    done: Optional[bool] = None
+
+
+class NoteCreate(BaseModel):
+    title: str
+    content: Optional[str] = None
+
+
+class NoteUpdate(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+
+
+# --- Task routes ---
+
+@app.get("/api/tasks")
+def list_tasks():
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM tasks ORDER BY done ASC, created_at DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+@app.post("/api/tasks", status_code=201)
+def create_task(task: TaskCreate):
+    now = datetime.now().isoformat()
+    with get_db() as conn:
+        cur = conn.execute(
+            "INSERT INTO tasks (title, description, due_date, priority, created_at) VALUES (?, ?, ?, ?, ?)",
+            (task.title, task.description, task.due_date, task.priority, now),
+        )
+        row = conn.execute("SELECT * FROM tasks WHERE id = ?", (cur.lastrowid,)).fetchone()
+        return dict(row)
+
+
+@app.put("/api/tasks/{task_id}")
+def update_task(task_id: int, task: TaskUpdate):
+    data = {k: v for k, v in task.model_dump(exclude_none=True).items() if k in TASK_FIELDS}
+    if not data:
+        raise HTTPException(400, "No fields to update")
+    if "done" in data:
+        data["done"] = int(data["done"])
+    set_clause = ", ".join(f"{k} = ?" for k in data)
+    with get_db() as conn:
+        conn.execute(f"UPDATE tasks SET {set_clause} WHERE id = ?", (*data.values(), task_id))
+        row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Task not found")
+        return dict(row)
+
+
+@app.delete("/api/tasks/{task_id}", status_code=204)
+def delete_task(task_id: int):
+    with get_db() as conn:
+        conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+
+
+# --- Note routes ---
+
+@app.get("/api/notes")
+def list_notes():
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM notes ORDER BY updated_at DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+@app.post("/api/notes", status_code=201)
+def create_note(note: NoteCreate):
+    now = datetime.now().isoformat()
+    with get_db() as conn:
+        cur = conn.execute(
+            "INSERT INTO notes (title, content, created_at, updated_at) VALUES (?, ?, ?, ?)",
+            (note.title, note.content, now, now),
+        )
+        row = conn.execute("SELECT * FROM notes WHERE id = ?", (cur.lastrowid,)).fetchone()
+        return dict(row)
+
+
+@app.put("/api/notes/{note_id}")
+def update_note(note_id: int, note: NoteUpdate):
+    now = datetime.now().isoformat()
+    data = {k: v for k, v in note.model_dump(exclude_none=True).items() if k in NOTE_FIELDS}
+    data["updated_at"] = now
+    set_clause = ", ".join(f"{k} = ?" for k in data)
+    with get_db() as conn:
+        conn.execute(f"UPDATE notes SET {set_clause} WHERE id = ?", (*data.values(), note_id))
+        row = conn.execute("SELECT * FROM notes WHERE id = ?", (note_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Note not found")
+        return dict(row)
+
+
+@app.delete("/api/notes/{note_id}", status_code=204)
+def delete_note(note_id: int):
+    with get_db() as conn:
+        conn.execute("DELETE FROM notes WHERE id = ?", (note_id,))
+
+
+# --- WebUntis routes ---
+
+@app.post("/api/webuntis/sync")
+async def webuntis_sync():
+    loop = asyncio.get_event_loop()
+    lessons, homeworks, messages = await loop.run_in_executor(_sync_executor, _run_webuntis_in_thread)
+    now = datetime.now().isoformat()
+    new_count = updated_count = 0
+    with get_db() as conn:
+        conn.execute("DELETE FROM schedule_lessons")
+        conn.executemany(
+            "INSERT INTO schedule_lessons (date, start_time, end_time, subject, teacher, room, cancelled, lesson_code, synced_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [(l["date"], l["start_time"], l["end_time"], l["subject"], l["teacher"], l["room"], l["cancelled"], l["lesson_code"], now) for l in lessons],
+        )
+        for hw in homeworks:
+            existing = conn.execute(
+                "SELECT id FROM tasks WHERE webuntis_id = ?", (hw["webuntis_id"],)
+            ).fetchone()
+            if existing:
+                conn.execute(
+                    "UPDATE tasks SET title = ?, description = ?, due_date = ? WHERE webuntis_id = ?",
+                    (hw["title"], hw["description"], hw["due_date"], hw["webuntis_id"]),
+                )
+                updated_count += 1
+            else:
+                conn.execute(
+                    "INSERT INTO tasks (title, description, due_date, priority, done, created_at, webuntis_id) VALUES (?, ?, ?, ?, 0, ?, ?)",
+                    (hw["title"], hw["description"], hw["due_date"], hw["priority"], now, hw["webuntis_id"]),
+                )
+                new_count += 1
+        conn.execute("DELETE FROM messages")
+        conn.executemany(
+            "INSERT INTO messages (id, subject, body, sender, sent_at, is_read, synced_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [(m["id"], m["subject"], m["body"], m["sender"], m["sent_at"], m["is_read"], now) for m in messages],
+        )
+    return {
+        "synced_lessons": len(lessons),
+        "new_homeworks": new_count,
+        "updated_homeworks": updated_count,
+        "synced_messages": len(messages),
+    }
+
+
+@app.get("/api/schedule")
+def get_schedule():
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM schedule_lessons ORDER BY date ASC, start_time ASC"
+        ).fetchall()
+        last_sync = conn.execute(
+            "SELECT synced_at FROM schedule_lessons ORDER BY synced_at DESC LIMIT 1"
+        ).fetchone()
+        return {
+            "lessons": [dict(r) for r in rows],
+            "last_sync": last_sync["synced_at"] if last_sync else None,
+        }
+
+
+@app.get("/api/messages")
+def get_messages():
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM messages ORDER BY is_read ASC, sent_at DESC"
+        ).fetchall()
+        last_sync = conn.execute(
+            "SELECT synced_at FROM messages ORDER BY synced_at DESC LIMIT 1"
+        ).fetchone()
+        return {
+            "messages": [dict(r) for r in rows],
+            "last_sync": last_sync["synced_at"] if last_sync else None,
+        }
+
+
+# --- Frontend ---
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+@app.get("/")
+def index():
+    return FileResponse("static/index.html")
+
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TaskBoard</title>
+  <style>
+    :root {
+      --bg: #f1f5f9;
+      --surface: #ffffff;
+      --border: #e2e8f0;
+      --text: #1e293b;
+      --muted: #64748b;
+      --primary: #4f46e5;
+      --primary-h: #4338ca;
+      --radius: 10px;
+      --shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      gap: 28px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      box-shadow: var(--shadow);
+    }
+    header h1 { font-size: 1.1rem; font-weight: 700; color: var(--primary); letter-spacing: -0.02em; }
+    nav { display: flex; gap: 4px; }
+    .tab-btn {
+      padding: 6px 14px;
+      border: none;
+      background: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--muted);
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+    .tab-btn:hover { background: var(--bg); color: var(--text); }
+    .tab-btn.active { background: var(--primary); color: #fff; }
+    main { max-width: 760px; margin: 0 auto; padding: 24px 16px; }
+    .tab { display: none; }
+    .tab.active { display: block; }
+
+    /* Form card */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow);
+    }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .row + .row { margin-top: 8px; }
+    input[type=text], input[type=date], select, textarea {
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 8px 12px;
+      font-size: 0.875rem;
+      font-family: inherit;
+      color: var(--text);
+      background: var(--bg);
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    input[type=text]:focus, input[type=date]:focus, select:focus, textarea:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(79,70,229,0.12);
+    }
+    .grow { flex: 1; min-width: 0; }
+    textarea { width: 100%; resize: vertical; min-height: 80px; }
+    .btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 7px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      font-weight: 600;
+      font-family: inherit;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-h); }
+    .btn-ghost { background: var(--border); color: var(--text); }
+    .btn-ghost:hover { background: #cbd5e1; }
+    .btn-danger-text { background: none; border: none; cursor: pointer; color: #ef4444; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-family: inherit; transition: background 0.15s; }
+    .btn-danger-text:hover { background: #fee2e2; }
+
+    /* Tasks */
+    .task-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      box-shadow: var(--shadow);
+      transition: opacity 0.2s;
+    }
+    .task-item.done { opacity: 0.45; }
+    .task-check {
+      width: 17px; height: 17px;
+      margin-top: 3px;
+      cursor: pointer;
+      accent-color: var(--primary);
+      flex-shrink: 0;
+    }
+    .task-body { flex: 1; min-width: 0; }
+    .task-title { font-weight: 500; font-size: 0.95rem; }
+    .task-item.done .task-title { text-decoration: line-through; color: var(--muted); }
+    .task-desc { font-size: 0.82rem; color: var(--muted); margin-top: 3px; }
+    .task-meta { display: flex; gap: 6px; margin-top: 5px; flex-wrap: wrap; }
+    .badge {
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+    .badge-low      { background: #dcfce7; color: #15803d; }
+    .badge-medium   { background: #fef9c3; color: #a16207; }
+    .badge-high     { background: #fee2e2; color: #b91c1c; }
+    .badge-date     { background: var(--border); color: var(--muted); }
+    .badge-homework { background: #ede9fe; color: #5b21b6; }
+
+    /* Notes */
+    .notes-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .note-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      box-shadow: var(--shadow);
+      cursor: pointer;
+      transition: box-shadow 0.15s, border-color 0.15s;
+      position: relative;
+    }
+    .note-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.1); border-color: var(--primary); }
+    .note-del {
+      position: absolute; top: 8px; right: 8px;
+      background: none; border: none; cursor: pointer;
+      color: var(--muted); font-size: 0.95rem;
+      padding: 4px 6px; border-radius: 6px;
+      line-height: 1; display: none;
+      transition: all 0.15s;
+    }
+    .note-card:hover .note-del { display: block; }
+    .note-del:hover { background: #fee2e2; color: #b91c1c; }
+    .note-title { font-weight: 600; font-size: 0.92rem; margin-bottom: 7px; }
+    .note-preview {
+      font-size: 0.82rem; color: var(--muted);
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 5;
+      -webkit-box-orient: vertical;
+      white-space: pre-wrap;
+    }
+    .note-date { font-size: 0.72rem; color: var(--muted); margin-top: 10px; }
+
+    /* Modal */
+    .overlay {
+      position: fixed; inset: 0;
+      background: rgba(15,23,42,0.45);
+      z-index: 100;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .overlay.open { display: flex; }
+    .modal {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 24px;
+      width: 100%; max-width: 540px;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.18);
+    }
+    .modal h2 { font-size: 1rem; font-weight: 700; margin-bottom: 14px; }
+    .modal input[type=text] { width: 100%; margin-bottom: 8px; }
+    .modal textarea { min-height: 180px; }
+    .modal-footer { display: flex; justify-content: space-between; margin-top: 14px; }
+
+    .empty { text-align: center; color: var(--muted); padding: 56px 0; font-size: 0.9rem; }
+    .empty-notes { grid-column: 1 / -1; }
+
+    /* Schedule */
+    .day-block { margin-bottom: 20px; }
+    .day-heading {
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 8px;
+      padding-left: 2px;
+    }
+    .lesson {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--primary);
+      border-radius: var(--radius);
+      padding: 10px 14px;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      box-shadow: var(--shadow);
+    }
+    .lesson.cancelled {
+      border-left-color: #ef4444;
+      opacity: 0.55;
+    }
+    .lesson-time {
+      font-size: 0.78rem;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      min-width: 90px;
+    }
+    .lesson-subject { font-weight: 600; font-size: 0.92rem; flex: 1; }
+    .lesson-meta { font-size: 0.8rem; color: var(--muted); }
+    .badge-cancelled   { background: #fee2e2; color: #b91c1c; font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 999px; }
+    .badge-irregular   { background: #fef3c7; color: #92400e; font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 999px; }
+    .badge-substitution{ background: #e0e7ff; color: #3730a3; font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 999px; }
+    .badge-other       { background: var(--border); color: var(--muted);  font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 999px; }
+
+    /* Messages */
+    .msg-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      box-shadow: var(--shadow);
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .msg-card.unread { border-left-color: var(--primary); background: #f8f7ff; }
+    .msg-card-header { display: flex; align-items: flex-start; gap: 8px; }
+    .msg-subject { font-weight: 500; font-size: 0.92rem; flex: 1; }
+    .msg-card.unread .msg-subject { font-weight: 700; }
+    .msg-meta { font-size: 0.78rem; color: var(--muted); margin-top: 3px; }
+    .msg-body {
+      font-size: 0.85rem; color: var(--text);
+      margin-top: 10px; display: none;
+      white-space: pre-wrap; word-break: break-word;
+      border-top: 1px solid var(--border); padding-top: 10px;
+    }
+    .msg-body.open { display: block; }
+    .unread-count {
+      display: inline-block; background: var(--primary); color: #fff;
+      font-size: 0.65rem; font-weight: 700; padding: 1px 6px;
+      border-radius: 999px; margin-left: 4px; vertical-align: middle;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>TaskBoard</h1>
+  <nav>
+    <button class="tab-btn active" onclick="showTab('tasks')">Tasks</button>
+    <button class="tab-btn" onclick="showTab('notes')">Notes</button>
+    <button class="tab-btn" onclick="showTab('schedule')">Schedule</button>
+    <button class="tab-btn" onclick="showTab('messages')">Messages<span id="unread-count"></span></button>
+  </nav>
+</header>
+
+<main>
+  <!-- Tasks -->
+  <div id="tasks-tab" class="tab active">
+    <div class="card">
+      <div class="row">
+        <input id="task-title" class="grow" type="text" placeholder="New task…" onkeydown="if(event.key==='Enter')addTask()">
+        <select id="task-priority">
+          <option value="low">Low</option>
+          <option value="medium" selected>Medium</option>
+          <option value="high">High</option>
+        </select>
+        <input id="task-due" type="date">
+        <button class="btn btn-primary" onclick="addTask()">Add</button>
+      </div>
+      <div class="row">
+        <input id="task-desc" class="grow" type="text" placeholder="Description (optional)">
+      </div>
+    </div>
+    <div id="task-list"></div>
+  </div>
+
+  <!-- Notes -->
+  <div id="notes-tab" class="tab">
+    <div class="card">
+      <div class="row">
+        <input id="note-title" class="grow" type="text" placeholder="Note title…" onkeydown="if(event.key==='Enter')addNote()">
+        <button class="btn btn-primary" onclick="addNote()">Add</button>
+      </div>
+      <div class="row">
+        <textarea id="note-content" placeholder="Content (optional)…"></textarea>
+      </div>
+    </div>
+    <div id="note-grid" class="notes-grid"></div>
+  </div>
+
+  <!-- Messages -->
+  <div id="messages-tab" class="tab">
+    <div id="messages-list"></div>
+  </div>
+
+  <!-- Schedule -->
+  <div id="schedule-tab" class="tab">
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="btn btn-ghost" onclick="changeWeek(-1)">&#8592; Prev</button>
+        <span id="week-label" style="font-weight:600;min-width:160px;text-align:center"></span>
+        <button class="btn btn-ghost" onclick="changeWeek(1)">Next &#8594;</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span id="sync-status" style="font-size:0.8rem;color:var(--muted)"></span>
+        <button class="btn btn-primary" id="sync-btn" onclick="syncWebUntis()">Sync WebUntis</button>
+      </div>
+    </div>
+    <div id="schedule-view"></div>
+  </div>
+</main>
+
+<!-- Note modal -->
+<div id="overlay" class="overlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <h2>Edit Note</h2>
+    <input id="modal-title" type="text" placeholder="Title">
+    <textarea id="modal-content" placeholder="Content…"></textarea>
+    <div class="modal-footer">
+      <button class="btn-danger-text" onclick="deleteNoteModal()">Delete</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveNote()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let notesCache = {};
+  let currentNoteId = null;
+
+  function showTab(name) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(name + '-tab').classList.add('active');
+    event.currentTarget.classList.add('active');
+    if (name === 'notes') loadNotes();
+    if (name === 'schedule') loadSchedule();
+    if (name === 'messages') loadMessages();
+  }
+
+  // ── Tasks ──────────────────────────────────────────
+
+  async function loadTasks() {
+    const tasks = await api('GET', '/api/tasks');
+    const el = document.getElementById('task-list');
+    if (!tasks.length) {
+      el.innerHTML = '<div class="empty">No tasks yet — add one above.</div>';
+      return;
+    }
+    el.innerHTML = tasks.map(t => `
+      <div class="task-item${t.done ? ' done' : ''}" id="t${t.id}">
+        <input type="checkbox" class="task-check" ${t.done ? 'checked' : ''}
+          onchange="toggleTask(${t.id}, this.checked)">
+        <div class="task-body">
+          <div class="task-title">${esc(t.title)}</div>
+          ${t.description ? `<div class="task-desc">${esc(t.description)}</div>` : ''}
+          <div class="task-meta">
+            <span class="badge badge-${t.priority}">${t.priority}</span>
+            ${t.due_date ? `<span class="badge badge-date">Due ${t.due_date}</span>` : ''}
+            ${t.webuntis_id ? `<span class="badge badge-homework">Homework</span>` : ''}
+          </div>
+        </div>
+        <button class="btn-danger-text" onclick="deleteTask(${t.id})">✕</button>
+      </div>
+    `).join('');
+  }
+
+  async function addTask() {
+    const title = val('task-title');
+    if (!title) return;
+    await api('POST', '/api/tasks', {
+      title,
+      description: val('task-desc') || null,
+      priority: document.getElementById('task-priority').value,
+      due_date: val('task-due') || null,
+    });
+    clear('task-title', 'task-desc', 'task-due');
+    loadTasks();
+  }
+
+  async function toggleTask(id, done) {
+    await api('PUT', `/api/tasks/${id}`, { done });
+    loadTasks();
+  }
+
+  async function deleteTask(id) {
+    await api('DELETE', `/api/tasks/${id}`);
+    loadTasks();
+  }
+
+  // ── Notes ──────────────────────────────────────────
+
+  async function loadNotes() {
+    const notes = await api('GET', '/api/notes');
+    notesCache = Object.fromEntries(notes.map(n => [n.id, n]));
+    const el = document.getElementById('note-grid');
+    if (!notes.length) {
+      el.innerHTML = '<div class="empty empty-notes">No notes yet — add one above.</div>';
+      return;
+    }
+    el.innerHTML = notes.map(n => `
+      <div class="note-card" onclick="openModal(${n.id})">
+        <button class="note-del" onclick="event.stopPropagation();deleteNote(${n.id})">✕</button>
+        <div class="note-title">${esc(n.title)}</div>
+        ${n.content ? `<div class="note-preview">${esc(n.content)}</div>` : ''}
+        <div class="note-date">${fmtDate(n.updated_at)}</div>
+      </div>
+    `).join('');
+  }
+
+  async function addNote() {
+    const title = val('note-title');
+    if (!title) return;
+    await api('POST', '/api/notes', {
+      title,
+      content: val('note-content') || null,
+    });
+    clear('note-title', 'note-content');
+    loadNotes();
+  }
+
+  function openModal(id) {
+    const n = notesCache[id];
+    if (!n) return;
+    currentNoteId = id;
+    document.getElementById('modal-title').value = n.title;
+    document.getElementById('modal-content').value = n.content || '';
+    document.getElementById('overlay').classList.add('open');
+  }
+
+  function closeModal() {
+    document.getElementById('overlay').classList.remove('open');
+    currentNoteId = null;
+  }
+
+  async function saveNote() {
+    const title = document.getElementById('modal-title').value.trim();
+    if (!title) return;
+    await api('PUT', `/api/notes/${currentNoteId}`, {
+      title,
+      content: document.getElementById('modal-content').value || null,
+    });
+    closeModal();
+    loadNotes();
+  }
+
+  async function deleteNote(id) {
+    if (!confirm('Delete this note?')) return;
+    await api('DELETE', `/api/notes/${id}`);
+    loadNotes();
+  }
+
+  async function deleteNoteModal() {
+    if (!confirm('Delete this note?')) return;
+    await api('DELETE', `/api/notes/${currentNoteId}`);
+    closeModal();
+    loadNotes();
+  }
+
+  // ── Messages ──────────────────────────────────────
+
+  async function loadMessages() {
+    const data = await api('GET', '/api/messages');
+    const msgs = data.messages || [];
+    const unread = msgs.filter(m => !m.is_read).length;
+    const badge = document.getElementById('unread-count');
+    badge.innerHTML = unread > 0 ? `<span class="unread-count">${unread}</span>` : '';
+
+    const el = document.getElementById('messages-list');
+    if (!msgs.length) {
+      el.innerHTML = '<div class="empty">No messages yet — sync WebUntis to fetch messages.</div>';
+      return;
+    }
+    el.innerHTML = msgs.map(m => `
+      <div class="msg-card${m.is_read ? '' : ' unread'}" onclick="toggleMsg(this)">
+        <div class="msg-card-header">
+          <div class="msg-subject">${esc(m.subject || '(no subject)')}</div>
+          ${m.is_read ? '' : '<span class="badge badge-homework">Unread</span>'}
+        </div>
+        <div class="msg-meta">${esc(m.sender || 'Unknown')} · ${fmtDate(m.sent_at)}</div>
+        <div class="msg-body">${esc(stripHtml(m.body || ''))}</div>
+      </div>
+    `).join('');
+  }
+
+  function toggleMsg(el) {
+    el.querySelector('.msg-body').classList.toggle('open');
+  }
+
+  function stripHtml(html) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    return tmp.textContent || tmp.innerText || '';
+  }
+
+  // ── Schedule ───────────────────────────────────────
+
+  let weekOffset = 0;
+  let allLessons = [];
+  let lastSync = null;
+
+  function weekMonday(offset) {
+    const d = new Date();
+    const day = d.getDay();
+    d.setDate(d.getDate() - (day === 0 ? 6 : day - 1) + offset * 7);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  function isoDate(d) {
+    return d.toISOString().slice(0, 10);
+  }
+
+  function changeWeek(dir) {
+    weekOffset += dir;
+    renderSchedule();
+  }
+
+  async function loadSchedule() {
+    const data = await api('GET', '/api/schedule');
+    allLessons = data.lessons || [];
+    lastSync = data.last_sync;
+    if (lastSync) {
+      document.getElementById('sync-status').textContent =
+        'Last sync: ' + new Date(lastSync).toLocaleString('en-SE', { dateStyle: 'short', timeStyle: 'short' });
+    }
+    renderSchedule();
+  }
+
+  const CODE_BADGE = {
+    'CANCELLED':    ['cancelled',    'Cancelled'],
+    'IRREGULAR':    ['irregular',    'Changed'],
+    'SUBSTITUTION': ['substitution', 'Substitution'],
+    'FREE':         ['cancelled',    'Free period'],
+  };
+
+  function changeBadge(code) {
+    const [cls, label] = CODE_BADGE[code] || ['other', code || 'Changed'];
+    return `<span class="badge-${cls}">${label}</span>`;
+  }
+
+  function renderSchedule() {
+    const monday = weekMonday(weekOffset);
+    const friday = new Date(monday);
+    friday.setDate(friday.getDate() + 6);
+
+    document.getElementById('week-label').textContent =
+      monday.toLocaleDateString('en-SE', { month: 'short', day: 'numeric' }) +
+      ' – ' +
+      friday.toLocaleDateString('en-SE', { month: 'short', day: 'numeric', year: 'numeric' });
+
+    const weekDays = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(monday);
+      d.setDate(d.getDate() + i);
+      return isoDate(d);
+    });
+
+    const el = document.getElementById('schedule-view');
+
+    if (!allLessons.length) {
+      el.innerHTML = '<div class="empty">No data yet — click Sync WebUntis to fetch your timetable.</div>';
+      return;
+    }
+
+    // Only keep lessons that deviate from the normal schedule
+    const changes = allLessons.filter(l => l.lesson_code !== 'REGULAR');
+
+    const byDay = {};
+    for (const date of weekDays) byDay[date] = [];
+    for (const l of changes) {
+      if (byDay[l.date] !== undefined) byDay[l.date].push(l);
+    }
+
+    const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    let html = '';
+    for (let i = 0; i < 7; i++) {
+      const date = weekDays[i];
+      const lessons = byDay[date];
+      if (!lessons.length) continue;
+      const label = dayNames[i] + ' ' + new Date(date + 'T12:00:00').toLocaleDateString('en-SE', { month: 'short', day: 'numeric' });
+      html += `<div class="day-block"><div class="day-heading">${label}</div>`;
+      for (const l of lessons) {
+        html += `
+          <div class="lesson${l.cancelled ? ' cancelled' : ''}">
+            <div class="lesson-time">${l.start_time} – ${l.end_time}</div>
+            <div>
+              <div class="lesson-subject">${esc(l.subject || '—')} ${changeBadge(l.lesson_code)}</div>
+              <div class="lesson-meta">${[l.teacher, l.room].filter(Boolean).map(esc).join(' · ')}</div>
+            </div>
+          </div>`;
+      }
+      html += '</div>';
+    }
+
+    if (!html) html = '<div class="empty">No changes this week.</div>';
+    el.innerHTML = html;
+  }
+
+  async function syncWebUntis() {
+    const btn = document.getElementById('sync-btn');
+    const status = document.getElementById('sync-status');
+    btn.disabled = true;
+    btn.textContent = 'Browser opening…';
+    status.textContent = 'Log in to WebUntis in the browser window that just opened.';
+    try {
+      const result = await api('POST', '/api/webuntis/sync');
+      const hw = result.new_homeworks;
+      const upd = result.updated_homeworks;
+      const mg = result.synced_messages;
+      status.textContent = `Synced. ${hw} new homework${hw !== 1 ? 's' : ''} added${upd ? `, ${upd} updated` : ''}. ${mg} message${mg !== 1 ? 's' : ''} fetched.`;
+      await Promise.all([loadSchedule(), loadTasks(), loadMessages()]);
+    } catch (e) {
+      status.textContent = 'Sync failed — check the terminal for details.';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Sync WebUntis';
+    }
+  }
+
+  // ── Helpers ────────────────────────────────────────
+
+  async function api(method, url, body) {
+    const opts = { method, headers: {} };
+    if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+    const r = await fetch(url, opts);
+    if (r.status === 204) return null;
+    return r.json();
+  }
+
+  function esc(s) {
+    if (!s) return '';
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function val(id) { return document.getElementById(id).value.trim(); }
+
+  function clear(...ids) { ids.forEach(id => { document.getElementById(id).value = ''; }); }
+
+  function fmtDate(iso) {
+    if (!iso) return '';
+    return new Date(iso).toLocaleDateString('en-SE', { year:'numeric', month:'short', day:'numeric' });
+  }
+
+  loadTasks();
+</script>
+</body>
+</html>
