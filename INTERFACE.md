@@ -5,16 +5,16 @@ The entire frontend lives in `static/index.html` — one file containing HTML, C
 ## Layout
 
 ```
-┌─────────────────────────────────────────┐
-│  TaskBoard   [Tasks] [Notes] [Schedule] │  ← sticky header
-├─────────────────────────────────────────┤
-│                                         │
-│   Active tab content                    │
-│                                         │
-└─────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│  TaskBoard  [Tasks] [Notes] [Schedule] [Messages 3]  │  ← sticky header
+├──────────────────────────────────────────────────────┤
+│                                                      │
+│   Active tab content                                 │
+│                                                      │
+└──────────────────────────────────────────────────────┘
 ```
 
-Tabs are mutually exclusive. Clicking a tab loads its content — Notes and Schedule fetch from the API on first open.
+Tabs are mutually exclusive. Clicking a tab loads its content — Notes, Schedule, and Messages fetch from the API on first open.
 
 ## Tasks tab
 
@@ -24,12 +24,20 @@ Tabs are mutually exclusive. Clicking a tab loads its content — Notes and Sche
 - Due date is optional (date picker).
 - Description is optional (second input row).
 
+**⟳ Reminders button**
+- Pulls all non-completed reminders from every Apple Reminders list into the task list.
+- First pull writes a `[task:N]` tag into each reminder's body so future edits and completions sync back.
+- Re-clicking updates existing pulled tasks without creating duplicates.
+- macOS only — shows an error message if the server is not running on Mac.
+
 **Task list**
 - Active tasks appear above completed ones.
-- Tick the checkbox to mark done — the item greys out and the title gets a strikethrough.
-- Click ✕ to delete.
+- Tick the checkbox to mark done — the item greys out and the title gets a strikethrough. Marks the matching Reminders item complete on macOS.
+- Click ✕ to delete. Deletes the matching Reminders item on macOS.
 - Priority is shown as a colour-coded pill: green (low), yellow (medium), red (high).
 - Due date is shown as a grey pill if set.
+- Tasks from WebUntis homework show a purple **Homework** badge.
+- Tasks pulled from Apple Reminders show a pink **Reminder** badge.
 
 ## Notes tab
 
@@ -49,16 +57,26 @@ Tabs are mutually exclusive. Clicking a tab loads its content — Notes and Sche
 
 ## Schedule tab
 
-**Sync button**
-- Click "Sync WebUntis" to fetch a fresh timetable (see `WEBUNTIS.md` for what happens).
-- The button disables and shows status text while the sync is running.
-- Last sync time is shown next to the button once data exists.
+**Sync buttons**
+- **Sync WebUntis** — opens a browser window, user logs in, fetches timetable changes and messages. Also syncs homework to the Tasks tab.
+- **Sync Mudo** (green) — opens a browser window, user logs in to mudo.se, fetches booked training sessions.
+- Both buttons disable while running and show status text. Last sync times for each source are shown next to the buttons.
 
 **Week view**
-- Shows one week at a time: Mon–Sun, only days that have lessons.
+- Shows one week at a time: Mon–Sun, only days that have items.
 - ← Prev / Next → buttons navigate between weeks.
-- Each lesson shows: time range, subject name, teacher, room.
-- Cancelled lessons are shown at 45% opacity with a red "Cancelled" badge.
+- **WebUntis changes** — lessons that deviate from the normal schedule. Regular lessons are hidden. Each shows: time range, subject, teacher, room, and a badge (Cancelled / Changed / Substitution / Free period).
+- **Mudo bookings** — training sessions where the user is booked. Green left border. Shows: start time, duration, class title, instructor, room, and a green **Booked** or yellow **Waitlist** badge.
+- Items on the same day are sorted by start time.
+- If a week has no changes or bookings, shows "No changes or bookings this week."
+
+## Messages tab
+
+- Lists WebUntis inbox messages, unread first.
+- The tab button shows an unread count badge (e.g. **Messages 3**).
+- Unread messages have a blue left border and bold subject.
+- Click a message card to expand the full body (HTML is stripped to plain text).
+- Messages are populated by the WebUntis sync — there is no separate Messages sync button.
 
 ## Styling
 
@@ -84,8 +102,11 @@ All JS is at the bottom of `static/index.html` inside a single `<script>` tag.
 |---|---|
 | `showTab(name)` | Switch active tab, trigger lazy load |
 | `loadTasks()`, `addTask()`, `toggleTask()`, `deleteTask()` | Task CRUD |
+| `syncReminders()` | Pull all Apple Reminders into the task list |
 | `loadNotes()`, `addNote()`, `openModal()`, `saveNote()`, `deleteNote()`, `deleteNoteModal()`, `closeModal()` | Notes CRUD + modal |
-| `loadSchedule()`, `renderSchedule()`, `changeWeek()`, `syncWebUntis()` | Schedule display and sync |
+| `loadSchedule()`, `renderSchedule()`, `changeWeek()` | Schedule display (merges WebUntis + Mudo) |
+| `syncWebUntis()`, `syncMudo()` | Trigger sync and refresh schedule/tasks/messages |
+| `loadMessages()`, `toggleMsg()`, `stripHtml()` | Messages display |
 | `api(method, url, body)` | Shared fetch wrapper — handles JSON and 204 responses |
 | `esc(s)` | HTML-escape strings before inserting into innerHTML |
 | `val(id)` | Get trimmed value of an input by id |
@@ -99,5 +120,6 @@ All JS is at the bottom of `static/index.html` inside a single `<script>` tag.
 | `notesCache` | `{id: note}` map — populated by `loadNotes()`, used by `openModal()` to avoid re-fetching |
 | `currentNoteId` | ID of the note currently open in the modal |
 | `weekOffset` | Number of weeks from current week shown in Schedule (0 = this week) |
-| `allLessons` | All lessons returned from `/api/schedule`, filtered by `renderSchedule()` |
+| `allLessons` | All lessons returned from `/api/schedule`, filtered to non-REGULAR by `renderSchedule()` |
+| `mudoBookings` | All bookings returned from `/api/mudo/bookings`, merged into schedule view |
 | `lastSync` | ISO timestamp of the last WebUntis sync |
