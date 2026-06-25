@@ -1,3 +1,4 @@
+import json
 import subprocess
 import sys
 
@@ -17,6 +18,22 @@ def _run(script: str) -> str:
         return r.stdout.strip()
     except Exception as e:
         print(f"Reminders: osascript failed: {e}")
+        return ""
+
+
+def _run_js(script: str) -> str:
+    if sys.platform != "darwin":
+        return ""
+    try:
+        r = subprocess.run(
+            ["osascript", "-l", "JavaScript", "-e", script],
+            capture_output=True, text=True, timeout=15,
+        )
+        if r.returncode != 0 and r.stderr:
+            print(f"Reminders JS error: {r.stderr.strip()}")
+        return r.stdout.strip()
+    except Exception as e:
+        print(f"Reminders: osascript JS failed: {e}")
         return ""
 
 
@@ -40,6 +57,49 @@ def _date_lines(iso: str) -> str:
         f"    set minutes of dueDate to 59\n"
         f"    set seconds of dueDate to 0"
     )
+
+
+def fetch_reminders() -> list[dict]:
+    """Read all non-completed, untagged reminders from every Reminders list."""
+    script = """
+const app = Application('Reminders');
+const results = [];
+for (const list of app.lists()) {
+    const listName = list.name();
+    for (const r of list.reminders.whose({completed: false})()) {
+        const body = r.body() || '';
+        if (body.includes('[task:')) continue;
+        const due = r.dueDate();
+        results.push({
+            apple_id: r.id(),
+            name: r.name(),
+            due: due ? due.toISOString().slice(0, 10) : null,
+            list: listName,
+            notes: body || null,
+        });
+    }
+}
+JSON.stringify(results);
+"""
+    output = _run_js(script)
+    try:
+        return json.loads(output) if output else []
+    except Exception as e:
+        print(f"Reminders: could not parse fetch output: {e}")
+        return []
+
+
+def tag_reminder(list_name: str, reminder_name: str, task_id: int):
+    """Add [task:N] to an existing reminder's body so future edits sync back."""
+    script = f"""tell application "Reminders"
+    if not (exists list "{_esc(list_name)}") then return
+    set found to (reminders of list "{_esc(list_name)}") whose name is "{_esc(reminder_name)}" and completed is false
+    if (count of found) > 0 then
+        set r to item 1 of found
+        set body of r to "{_tag(task_id)}" & return & body of r
+    end if
+end tell"""
+    _run(script)
 
 
 def create_reminder(task_id: int, title: str, due_date: str | None = None, notes: str | None = None):
@@ -76,9 +136,12 @@ def update_reminder(task_id: int, title: str | None = None, due_date: str | None
     set_block = "\n        ".join(sets)
     tag = _tag(task_id)
 
+    # Search all lists so pulled reminders (outside TaskBoard) also sync
     script = f"""tell application "Reminders"
-    if not (exists list "{LIST_NAME}") then return
-{date_block}    set found to (reminders of list "{LIST_NAME}") whose body contains "{tag}"
+{date_block}    set found to {{}}
+    repeat with l in lists
+        set found to found & (reminders of l whose body contains "{tag}")
+    end repeat
     if (count of found) > 0 then
         set r to item 1 of found
         {set_block}
@@ -90,8 +153,10 @@ end tell"""
 def delete_reminder(task_id: int):
     tag = _tag(task_id)
     script = f"""tell application "Reminders"
-    if not (exists list "{LIST_NAME}") then return
-    set found to (reminders of list "{LIST_NAME}") whose body contains "{tag}"
+    set found to {{}}
+    repeat with l in lists
+        set found to found & (reminders of l whose body contains "{tag}")
+    end repeat
     repeat with r in found
         delete r
     end repeat

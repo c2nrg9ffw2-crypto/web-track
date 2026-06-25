@@ -304,9 +304,11 @@
         </select>
         <input id="task-due" type="date">
         <button class="btn btn-primary" onclick="addTask()">Add</button>
+        <button class="btn btn-ghost" id="rem-btn" onclick="syncReminders()" title="Pull all reminders from Apple Reminders">⟳ Reminders</button>
       </div>
       <div class="row">
         <input id="task-desc" class="grow" type="text" placeholder="Description (optional)">
+        <span id="rem-status" style="font-size:0.8rem;color:var(--muted)"></span>
       </div>
     </div>
     <div id="task-list"></div>
@@ -399,11 +401,30 @@
             <span class="badge badge-${t.priority}">${t.priority}</span>
             ${t.due_date ? `<span class="badge badge-date">Due ${t.due_date}</span>` : ''}
             ${t.webuntis_id ? `<span class="badge badge-homework">Homework</span>` : ''}
+            ${t.reminders_id ? `<span class="badge" style="background:#fce7f3;color:#9d174d">Reminder</span>` : ''}
           </div>
         </div>
         <button class="btn-danger-text" onclick="deleteTask(${t.id})">✕</button>
       </div>
     `).join('');
+  }
+
+  async function syncReminders() {
+    const btn = document.getElementById('rem-btn');
+    const status = document.getElementById('rem-status');
+    btn.disabled = true;
+    btn.textContent = 'Reading…';
+    try {
+      const result = await api('POST', '/api/reminders/pull');
+      const a = result.added, u = result.updated;
+      status.textContent = `${a} added, ${u} updated from Reminders.`;
+      loadTasks();
+    } catch (e) {
+      status.textContent = 'Failed — is the server running on macOS?';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '⟳ Reminders';
+    }
   }
 
   async function addTask() {

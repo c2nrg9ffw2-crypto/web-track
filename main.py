@@ -72,7 +72,8 @@ def init_db():
                 priority TEXT DEFAULT 'medium',
                 done INTEGER DEFAULT 0,
                 created_at TEXT NOT NULL,
-                webuntis_id TEXT
+                webuntis_id TEXT,
+                reminders_id TEXT
             );
             CREATE TABLE IF NOT EXISTS notes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -121,6 +122,7 @@ def migrate_db():
         for stmt in [
             "ALTER TABLE schedule_lessons ADD COLUMN lesson_code TEXT DEFAULT 'REGULAR'",
             "ALTER TABLE tasks ADD COLUMN webuntis_id TEXT",
+            "ALTER TABLE tasks ADD COLUMN reminders_id TEXT",
         ]:
             try:
                 conn.execute(stmt)
@@ -335,6 +337,35 @@ def get_messages():
             "messages": [dict(r) for r in rows],
             "last_sync": last_sync["synced_at"] if last_sync else None,
         }
+
+
+# --- Reminders pull ---
+
+@app.post("/api/reminders/pull")
+def pull_reminders():
+    items = rem.fetch_reminders()
+    now = datetime.now().isoformat()
+    added = updated = 0
+    with get_db() as conn:
+        for item in items:
+            apple_id = item["apple_id"]
+            existing = conn.execute(
+                "SELECT id FROM tasks WHERE reminders_id = ?", (apple_id,)
+            ).fetchone()
+            if existing:
+                conn.execute(
+                    "UPDATE tasks SET title = ?, due_date = ? WHERE reminders_id = ?",
+                    (item["name"], item["due"], apple_id),
+                )
+                updated += 1
+            else:
+                cur = conn.execute(
+                    "INSERT INTO tasks (title, description, due_date, priority, done, created_at, reminders_id) VALUES (?, ?, ?, 'medium', 0, ?, ?)",
+                    (item["name"], item["notes"], item["due"], now, apple_id),
+                )
+                rem.tag_reminder(item["list"], item["name"], cur.lastrowid)
+                added += 1
+    return {"added": added, "updated": updated}
 
 
 # --- Mudo routes ---
