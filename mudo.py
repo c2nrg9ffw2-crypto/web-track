@@ -83,7 +83,15 @@ async def _scrape_week(page) -> list[dict]:
         btn_text = (await btn.text_content() or '').strip().lower()
         status = 'waitlist' if 'kö' in btn_text else 'booked'
 
-        await btn.click()
+        # Click the card's heading/title (NOT the Avboka button — that would cancel the booking).
+        # Walk up the DOM from the button to find the nearest list item or article card,
+        # then click its first heading element to open the detail dialog.
+        await btn.evaluate("""el => {
+            const card = el.closest('li, article, [class*="class"], [class*="card"], [class*="session"], [class*="slot"]');
+            if (!card) return;
+            const heading = card.querySelector('h2, h3, h4, [class*="title"], [class*="name"]');
+            (heading || card).click();
+        }""")
         await page.wait_for_timeout(600)
 
         dialog = page.locator('dialog')
