@@ -293,6 +293,7 @@ async def mudo_sync():
         raise HTTPException(503, "Mudo sync is only available on local deployment")
     loop = asyncio.get_event_loop()
     bookings = await loop.run_in_executor(_sync_executor, _run_mudo_in_thread)
+    bookings = list({b["id"]: b for b in bookings}.values())  # deduplicate by id
     now = datetime.now().isoformat()
     with get_db() as conn:
         conn.execute("DELETE FROM mudo_bookings")
@@ -332,4 +333,5 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     # No file-watch reload in the cloud (Render sets $PORT); reload locally.
     reload = "PORT" not in os.environ
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=reload)
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=reload,
+                reload_excludes=[".venv", "browser-profiles"])

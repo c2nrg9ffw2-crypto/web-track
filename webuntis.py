@@ -19,23 +19,38 @@ async def sync_all() -> tuple[list[dict], list[dict], list[dict]]:
         page = ctx.pages[0] if ctx.pages else await ctx.new_page()
 
         await page.goto(SCHOOL_URL)
-        await page.wait_for_function(
-            "() => window.location.hostname.includes('webuntis.com') && !window.location.hash.includes('login')",
-            timeout=300_000,
-        )
-        await page.wait_for_load_state("networkidle", timeout=30_000)
-        await page.wait_for_timeout(2000)
 
-        # WebUntis authenticates API calls with a JWT stored in localStorage,
-        # not cookies — page.request.get() needs this header to work.
-        token = await page.evaluate("() => localStorage.getItem('tokenString')")
-        auth = {"Authorization": f"Bearer {token}"} if token else {}
+        # Poll the API directly — this is the only reliable login signal regardless
+        # of what URL structure or localStorage keys WebUntis happens to use.
+        app_data = None
+        for _ in range(150):  # up to 5 minutes
+            try:
+                token = await page.evaluate("() => localStorage.getItem('tokenString')")
+                auth = {"Authorization": f"Bearer {token}"} if token else {}
+                r = await page.request.get(
+                    f"{BASE_URL}/WebUntis/api/rest/view/v1/app/data",
+                    headers=auth,
+                    timeout=5_000,
+                )
+                if r.ok:
+                    data = await r.json()
+                    if data.get("data", {}).get("user"):
+                        app_data = data
+                        break
+            except Exception:
+                pass
+            await page.wait_for_timeout(2_000)
 
-        r = await page.request.get(f"{BASE_URL}/WebUntis/api/rest/view/v1/app/data", headers=auth)
-        app_data = await r.json()
+        if not app_data:
+            await ctx.close()
+            raise RuntimeError("WebUntis login timed out after 5 minutes")
+
         user = app_data["data"]["user"]
         elem_id = user["elemId"]
         elem_type = user["elemType"]
+
+        token = await page.evaluate("() => localStorage.getItem('tokenString')")
+        auth = {"Authorization": f"Bearer {token}"} if token else {}
 
         lessons = await _fetch_schedule(page, elem_id, elem_type, auth)
         homeworks = await _fetch_homeworks(page, auth)
