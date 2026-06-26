@@ -543,8 +543,8 @@
   }
 
   // ── Auto-sync (Mac role) ───────────────────────────
-  // Runs the syncs immediately when Mac is chosen, then once at the start of
-  // each day the app is open. Only ever runs in the Mac role.
+  // Runs the syncs immediately when Mac is chosen, then once per hour.
+  // Only ever runs in the Mac role on localhost.
 
   async function autoSync() {
     if (getRole() !== 'mac' || !isLocal()) return;
@@ -555,11 +555,17 @@
   }
 
   function maybeAutoSync(force) {
-    if (getRole() !== 'mac') return;
-    const today = new Date().toLocaleDateString('en-CA');  // local YYYY-MM-DD
-    if (!force && localStorage.getItem('tb_last_autosync') === today) return;
-    localStorage.setItem('tb_last_autosync', today);
+    if (getRole() !== 'mac' || !isLocal()) return;
+    const hour = new Date().toISOString().slice(0, 13);  // "2024-01-15T14"
+    if (!force && localStorage.getItem('tb_last_autosync') === hour) return;
+    localStorage.setItem('tb_last_autosync', hour);
     autoSync();
+  }
+
+  function autoRefresh() {
+    loadTasks();
+    const scheduleTab = document.getElementById('schedule-tab');
+    if (scheduleTab && scheduleTab.classList.contains('active')) loadSchedule();
   }
 
   function showTab(name) {
@@ -1034,8 +1040,9 @@
   initRole();
   loadTasks();
   refreshUnread();
-  maybeAutoSync(false);  // new day since last open? sync now (Mac role only)
-  setInterval(() => maybeAutoSync(false), 15 * 60 * 1000);  // catch the day rollover while open
+  maybeAutoSync(false);  // new hour since last open? sync now (Mac role only)
+  setInterval(() => maybeAutoSync(false), 5 * 60 * 1000);   // poll every 5 min to catch the hour boundary
+  setInterval(autoRefresh, 60 * 60 * 1000);                 // re-fetch data every hour on all deployments
 </script>
 </body>
 </html>
