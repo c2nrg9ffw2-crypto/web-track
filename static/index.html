@@ -13,6 +13,8 @@
       --muted: #64748b;
       --primary: #4f46e5;
       --primary-h: #4338ca;
+      --surface-alt: #f8f7ff;
+      --hover: #cbd5e1;
       --radius: 10px;
       --shadow: 0 1px 4px rgba(0,0,0,0.08);
     }
@@ -63,10 +65,10 @@
       --border: #334155;
       --text: #e2e8f0;
       --muted: #94a3b8;
+      --surface-alt: #1e2a44;
+      --hover: #475569;
       --shadow: 0 1px 4px rgba(0,0,0,0.4);
     }
-    body.dark .msg-card.unread { background: #1e293b; }
-    body.dark .btn-ghost:hover { background: #475569; }
 
     /* Role: hide Mac-only controls when in User mode */
     body.role-user .mac-only { display: none !important; }
@@ -140,7 +142,7 @@
     .btn-primary { background: var(--primary); color: #fff; }
     .btn-primary:hover { background: var(--primary-h); }
     .btn-ghost { background: var(--border); color: var(--text); }
-    .btn-ghost:hover { background: #cbd5e1; }
+    .btn-ghost:hover { background: var(--hover); }
     .btn-danger-text { background: none; border: none; cursor: pointer; color: #ef4444; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-family: inherit; transition: background 0.15s; }
     .btn-danger-text:hover { background: #fee2e2; }
 
@@ -302,7 +304,7 @@
       cursor: pointer;
       transition: border-color 0.15s;
     }
-    .msg-card.unread { border-left-color: var(--primary); background: #f8f7ff; }
+    .msg-card.unread { border-left-color: var(--primary); background: var(--surface-alt); }
     .msg-card-header { display: flex; align-items: flex-start; gap: 8px; }
     .msg-subject { font-weight: 500; font-size: 0.92rem; flex: 1; }
     .msg-card.unread .msg-subject { font-weight: 700; }
@@ -477,7 +479,6 @@
   function applyRole() {
     const r = getRole() || 'user';
     document.body.classList.toggle('role-user', r === 'user');
-    document.body.classList.toggle('role-mac', r === 'mac');
     const lbl = document.getElementById('role-label');
     if (lbl) lbl.textContent = r === 'mac' ? 'Mac' : 'User';
   }
@@ -653,10 +654,16 @@
 
   // ── Messages ──────────────────────────────────────
 
-  async function loadMessages() {
+  // Fetch messages and refresh the unread indicator; returns the list.
+  async function fetchMessages() {
     const data = await api('GET', '/api/messages');
     const msgs = data.messages || [];
     setUnread(msgs.filter(m => !m.is_read).length);
+    return msgs;
+  }
+
+  async function loadMessages() {
+    const msgs = await fetchMessages();
 
     const el = document.getElementById('messages-list');
     if (!msgs.length) {
@@ -683,8 +690,7 @@
 
   async function refreshUnread() {
     try {
-      const data = await api('GET', '/api/messages');
-      setUnread((data.messages || []).filter(m => !m.is_read).length);
+      await fetchMessages();
     } catch (e) {}
   }
 
