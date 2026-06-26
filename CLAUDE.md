@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this project is
 
-A personal productivity web app that runs as a local server on macOS. It tracks tasks, notes, a school timetable fetched from WebUntis, booked Mudo training sessions, and syncs with Apple Reminders. The user opens it in a browser at `http://localhost:8000`.
+A personal productivity web app. It tracks tasks, notes, a school timetable fetched from WebUntis, booked Mudo training sessions, and syncs with Apple Reminders. Primarily run as a local server on macOS (opened at `http://localhost:8000`), it can also deploy to the cloud on Render with a Supabase/Postgres database — see `DEPLOY.md`. The browser-automation syncs (WebUntis, Mudo) and Apple Reminders are macOS/local-only; the cloud deployment serves tasks, notes, and the read-only schedule/messages views.
 
 ## Tech stack
 
