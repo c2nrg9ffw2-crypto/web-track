@@ -296,6 +296,11 @@
       font-size: 0.65rem; font-weight: 700; padding: 1px 6px;
       border-radius: 999px; margin-left: 4px; vertical-align: middle;
     }
+    .notif-dot {
+      display: inline-block; width: 8px; height: 8px;
+      background: #ef4444; border-radius: 50%;
+      margin-left: 5px; vertical-align: middle;
+    }
   </style>
 </head>
 <body>
@@ -306,7 +311,7 @@
     <button class="tab-btn active" onclick="showTab('tasks')">Tasks</button>
     <button class="tab-btn" onclick="showTab('notes')">Notes</button>
     <button class="tab-btn" onclick="showTab('schedule')">Schedule</button>
-    <button class="tab-btn" onclick="showTab('messages')">Messages<span id="unread-count"></span></button>
+    <button class="tab-btn" onclick="showTab('messages')">Messages<span id="msg-dot" class="notif-dot" style="display:none"></span><span id="unread-count"></span></button>
   </nav>
   <button class="tab-btn" id="role-chip" onclick="openRoleChooser()" title="Switch role"></button>
 </header>
@@ -590,9 +595,7 @@
   async function loadMessages() {
     const data = await api('GET', '/api/messages');
     const msgs = data.messages || [];
-    const unread = msgs.filter(m => !m.is_read).length;
-    const badge = document.getElementById('unread-count');
-    badge.innerHTML = unread > 0 ? `<span class="unread-count">${unread}</span>` : '';
+    setUnread(msgs.filter(m => !m.is_read).length);
 
     const el = document.getElementById('messages-list');
     if (!msgs.length) {
@@ -609,6 +612,19 @@
         <div class="msg-body">${esc(stripHtml(m.body || ''))}</div>
       </div>
     `).join('');
+  }
+
+  function setUnread(n) {
+    document.getElementById('unread-count').innerHTML =
+      n > 0 ? `<span class="unread-count">${n}</span>` : '';
+    document.getElementById('msg-dot').style.display = n > 0 ? 'inline-block' : 'none';
+  }
+
+  async function refreshUnread() {
+    try {
+      const data = await api('GET', '/api/messages');
+      setUnread((data.messages || []).filter(m => !m.is_read).length);
+    } catch (e) {}
   }
 
   function toggleMsg(el) {
@@ -814,6 +830,7 @@
 
   initRole();
   loadTasks();
+  refreshUnread();
 </script>
 </body>
 </html>
