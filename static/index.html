@@ -160,6 +160,7 @@
       transition: opacity 0.2s;
     }
     .task-item.done { opacity: 0.45; }
+    .task-item.pressing { background: var(--bg); transform: scale(0.99); }
     .task-check {
       width: 17px; height: 17px;
       margin-top: 3px;
@@ -167,7 +168,12 @@
       accent-color: var(--primary);
       flex-shrink: 0;
     }
-    .task-body { flex: 1; min-width: 0; }
+    .task-body {
+      flex: 1; min-width: 0;
+      cursor: default;
+      user-select: none; -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
     .task-title { font-weight: 500; font-size: 0.95rem; }
     .task-item.done .task-title { text-decoration: line-through; color: var(--muted); }
     .task-desc { font-size: 0.82rem; color: var(--muted); margin-top: 3px; }
@@ -458,9 +464,35 @@
   </div>
 </div>
 
+<!-- Task modal -->
+<div id="task-overlay" class="overlay" onclick="if(event.target===this)closeTaskModal()">
+  <div class="modal">
+    <h2>Edit Task</h2>
+    <input id="task-modal-title" type="text" placeholder="Title">
+    <input id="task-modal-desc" type="text" placeholder="Description (optional)" style="width:100%;margin-bottom:8px">
+    <div class="row">
+      <select id="task-modal-priority">
+        <option value="low">Low</option>
+        <option value="medium">Medium</option>
+        <option value="high">High</option>
+      </select>
+      <input id="task-modal-due" type="date">
+    </div>
+    <div class="modal-footer">
+      <button class="btn-danger-text" onclick="deleteTaskModal()">Delete</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost" onclick="closeTaskModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveTaskModal()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
   let notesCache = {};
   let currentNoteId = null;
+  let tasksCache = {};
+  let currentTaskId = null;
 
   // ── Role (Mac vs User) ─────────────────────────────
 
@@ -539,16 +571,17 @@
 
   async function loadTasks() {
     const tasks = await api('GET', '/api/tasks');
+    tasksCache = Object.fromEntries(tasks.map(t => [t.id, t]));
     const el = document.getElementById('task-list');
     if (!tasks.length) {
       el.innerHTML = '<div class="empty">No tasks yet — add one above.</div>';
       return;
     }
     el.innerHTML = tasks.map(t => `
-      <div class="task-item${t.done ? ' done' : ''}" id="t${t.id}">
+      <div class="task-item${t.done ? ' done' : ''}" id="t${t.id}" data-id="${t.id}">
         <input type="checkbox" class="task-check" ${t.done ? 'checked' : ''}
           onchange="toggleTask(${t.id}, this.checked)">
-        <div class="task-body">
+        <div class="task-body" title="Hold to edit">
           <div class="task-title">${esc(t.title)}</div>
           ${t.description ? `<div class="task-desc">${esc(t.description)}</div>` : ''}
           <div class="task-meta">
@@ -603,6 +636,80 @@
     await api('DELETE', `/api/tasks/${id}`);
     loadTasks();
   }
+
+  // ── Task edit modal (long-press to open) ───────────
+
+  function openTaskModal(id) {
+    const t = tasksCache[id];
+    if (!t) return;
+    currentTaskId = id;
+    document.getElementById('task-modal-title').value = t.title || '';
+    document.getElementById('task-modal-desc').value = t.description || '';
+    document.getElementById('task-modal-priority').value = t.priority || 'medium';
+    document.getElementById('task-modal-due').value = t.due_date || '';
+    document.getElementById('task-overlay').classList.add('open');
+  }
+
+  function closeTaskModal() {
+    document.getElementById('task-overlay').classList.remove('open');
+    currentTaskId = null;
+  }
+
+  async function saveTaskModal() {
+    const title = document.getElementById('task-modal-title').value.trim();
+    if (!title) return;
+    // Send empty strings (not null) so a cleared description/due actually clears —
+    // the API drops null fields but keeps "".
+    await api('PUT', `/api/tasks/${currentTaskId}`, {
+      title,
+      description: document.getElementById('task-modal-desc').value.trim(),
+      priority: document.getElementById('task-modal-priority').value,
+      due_date: document.getElementById('task-modal-due').value,
+    });
+    closeTaskModal();
+    loadTasks();
+  }
+
+  async function deleteTaskModal() {
+    if (!confirm('Delete this task?')) return;
+    await api('DELETE', `/api/tasks/${currentTaskId}`);
+    closeTaskModal();
+    loadTasks();
+  }
+
+  // Long-press detection, delegated on the task list so it survives re-renders.
+  (function initTaskLongPress() {
+    const list = document.getElementById('task-list');
+    let timer = null, startX = 0, startY = 0, pressedEl = null;
+
+    function cancel() {
+      clearTimeout(timer);
+      timer = null;
+      if (pressedEl) { pressedEl.classList.remove('pressing'); pressedEl = null; }
+    }
+
+    list.addEventListener('pointerdown', (e) => {
+      const body = e.target.closest('.task-body');
+      if (!body) return;  // ignore checkbox / delete button / empty area
+      const item = body.closest('.task-item');
+      if (!item) return;
+      const id = Number(item.dataset.id);
+      startX = e.clientX; startY = e.clientY;
+      pressedEl = item;
+      item.classList.add('pressing');
+      timer = setTimeout(() => { cancel(); openTaskModal(id); }, 500);
+    });
+
+    list.addEventListener('pointermove', (e) => {
+      if (timer && (Math.abs(e.clientX - startX) > 10 || Math.abs(e.clientY - startY) > 10)) cancel();
+    });
+
+    list.addEventListener('pointerup', cancel);
+    list.addEventListener('pointercancel', cancel);
+    list.addEventListener('pointerleave', cancel);
+    // Suppress the iOS long-press callout / right-click menu on task text.
+    list.addEventListener('contextmenu', (e) => { if (e.target.closest('.task-body')) e.preventDefault(); });
+  })();
 
   // ── Notes ──────────────────────────────────────────
 

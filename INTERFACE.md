@@ -41,6 +41,11 @@ The choice is stored in `localStorage` (`tb_role`) so it is only asked once per 
 - Re-clicking updates existing pulled tasks without creating duplicates.
 - macOS only — shows an error message if the server is not running on Mac.
 
+**Editing a task**
+- **Long-press** (press and hold ~0.5s) on a task's text to open the edit modal — title, description, priority, and due date. Save persists via `PUT /api/tasks/{id}`; clearing the description or due date removes them.
+- The Delete button in the modal removes the task.
+- A short tap/click does nothing; the checkbox (done) and ✕ (delete) remain direct actions and are excluded from the long-press.
+
 **Task list**
 - Active tasks appear above completed ones.
 - Tick the checkbox to mark done — the item greys out and the title gets a strikethrough. Marks the matching Reminders item complete on macOS.
@@ -127,7 +132,8 @@ All JS is at the bottom of `static/index.html` inside a single `<script>` tag.
 | `getRole()`, `setRole()`, `applyRole()`, `initRole()`, `openRoleChooser()` | Role (Mac/User) state — toggles `body.role-user`, persists `tb_role` |
 | `autoSync()`, `maybeAutoSync(force)` | Mac role: run all syncs on selection and once per day (`tb_last_autosync`) |
 | `getDark()`, `setDark()`, `applyDark()` | Dark-mode state — toggles `body.dark`, persists `tb_dark` |
-| `loadTasks()`, `addTask()`, `toggleTask()`, `deleteTask()` | Task CRUD |
+| `loadTasks()`, `addTask()`, `toggleTask()`, `deleteTask()` | Task CRUD (caches into `tasksCache`) |
+| `openTaskModal()`, `closeTaskModal()`, `saveTaskModal()`, `deleteTaskModal()` | Task edit modal (opened by long-press) |
 | `syncReminders()` | Pull all Apple Reminders into the task list |
 | `loadNotes()`, `addNote()`, `openModal()`, `saveNote()`, `deleteNote()`, `deleteNoteModal()`, `closeModal()` | Notes CRUD + modal |
 | `loadSchedule()`, `renderSchedule()`, `changeWeek()` | Schedule display (merges WebUntis + Mudo) |
@@ -157,6 +163,8 @@ On load the script runs `applyDark()`, `initRole()`, `loadTasks()`, and `refresh
 |---|---|
 | `notesCache` | `{id: note}` map — populated by `loadNotes()`, used by `openModal()` to avoid re-fetching |
 | `currentNoteId` | ID of the note currently open in the modal |
+| `tasksCache` | `{id: task}` map — populated by `loadTasks()`, used by `openTaskModal()` |
+| `currentTaskId` | ID of the task currently open in the edit modal |
 | `weekOffset` | Number of weeks from current week shown in Schedule (0 = this week) |
 | `allLessons` | All lessons returned from `/api/schedule`, filtered to non-REGULAR by `renderSchedule()` |
 | `mudoBookings` | All bookings returned from `/api/mudo/bookings`, merged into schedule view |
