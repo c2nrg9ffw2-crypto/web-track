@@ -56,6 +56,25 @@
     .tab { display: none; }
     .tab.active { display: block; }
 
+    /* Role: hide Mac-only controls when in User mode */
+    body.role-user .mac-only { display: none !important; }
+    #role-chip { margin-left: auto; }
+    .role-card {
+      flex: 1;
+      padding: 18px 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg);
+      cursor: pointer;
+      font-family: inherit;
+      text-align: center;
+      transition: all 0.15s;
+    }
+    .role-card:hover { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79,70,229,0.12); }
+    .role-card .role-emoji { font-size: 1.6rem; display: block; margin-bottom: 6px; }
+    .role-card .role-name { font-weight: 700; font-size: 0.95rem; }
+    .role-card .role-sub { font-weight: 400; font-size: 0.78rem; color: var(--muted); margin-top: 3px; }
+
     /* Form card */
     .card {
       background: var(--surface);
@@ -289,6 +308,7 @@
     <button class="tab-btn" onclick="showTab('schedule')">Schedule</button>
     <button class="tab-btn" onclick="showTab('messages')">Messages<span id="unread-count"></span></button>
   </nav>
+  <button class="tab-btn" id="role-chip" onclick="openRoleChooser()" title="Switch role"></button>
 </header>
 
 <main>
@@ -304,7 +324,7 @@
         </select>
         <input id="task-due" type="date">
         <button class="btn btn-primary" onclick="addTask()">Add</button>
-        <button class="btn btn-ghost" id="rem-btn" onclick="syncReminders()" title="Pull all reminders from Apple Reminders">⟳ Reminders</button>
+        <button class="btn btn-ghost mac-only" id="rem-btn" onclick="syncReminders()" title="Pull all reminders from Apple Reminders">⟳ Reminders</button>
       </div>
       <div class="row">
         <input id="task-desc" class="grow" type="text" placeholder="Description (optional)">
@@ -343,13 +363,33 @@
       </div>
       <div style="display:flex;align-items:center;gap:10px">
         <span id="sync-status" style="font-size:0.8rem;color:var(--muted)"></span>
-        <button class="btn btn-primary" id="sync-btn" onclick="syncWebUntis()">Sync WebUntis</button>
-        <button class="btn btn-primary" id="mudo-btn" style="background:#16a34a;border-color:#16a34a" onclick="syncMudo()">Sync Mudo</button>
+        <button class="btn btn-primary mac-only" id="sync-btn" onclick="syncWebUntis()">Sync WebUntis</button>
+        <button class="btn btn-primary mac-only" id="mudo-btn" style="background:#16a34a;border-color:#16a34a" onclick="syncMudo()">Sync Mudo</button>
       </div>
     </div>
     <div id="schedule-view"></div>
   </div>
 </main>
+
+<!-- Role chooser -->
+<div id="role-overlay" class="overlay" onclick="if(event.target===this && getRole())this.classList.remove('open')">
+  <div class="modal" style="max-width:440px">
+    <h2 style="text-align:center">Who's using TaskBoard?</h2>
+    <p style="text-align:center;color:var(--muted);font-size:0.85rem;margin-bottom:18px">Choose how you're opening the app.</p>
+    <div class="row" style="gap:12px">
+      <button class="role-card" onclick="setRole('mac')">
+        <span class="role-emoji">🖥️</span>
+        <span class="role-name">Mac</span>
+        <div class="role-sub">Full control — run WebUntis, Mudo &amp; Reminders syncs</div>
+      </button>
+      <button class="role-card" onclick="setRole('user')">
+        <span class="role-emoji">👤</span>
+        <span class="role-name">User</span>
+        <div class="role-sub">Tasks, notes &amp; viewing the schedule</div>
+      </button>
+    </div>
+  </div>
+</div>
 
 <!-- Note modal -->
 <div id="overlay" class="overlay" onclick="if(event.target===this)closeModal()">
@@ -370,6 +410,32 @@
 <script>
   let notesCache = {};
   let currentNoteId = null;
+
+  // ── Role (Mac vs User) ─────────────────────────────
+
+  function getRole() { return localStorage.getItem('tb_role'); }
+
+  function setRole(r) {
+    localStorage.setItem('tb_role', r);
+    document.getElementById('role-overlay').classList.remove('open');
+    applyRole();
+  }
+
+  function openRoleChooser() {
+    document.getElementById('role-overlay').classList.add('open');
+  }
+
+  function applyRole() {
+    const r = getRole() || 'user';
+    document.body.classList.toggle('role-user', r === 'user');
+    document.body.classList.toggle('role-mac', r === 'mac');
+    document.getElementById('role-chip').textContent = r === 'mac' ? '🖥️ Mac' : '👤 User';
+  }
+
+  function initRole() {
+    if (!getRole()) openRoleChooser();
+    applyRole();
+  }
 
   function showTab(name) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -746,6 +812,7 @@
     return new Date(iso).toLocaleDateString('en-SE', { year:'numeric', month:'short', day:'numeric' });
   }
 
+  initRole();
   loadTasks();
 </script>
 </body>
