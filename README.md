@@ -9,14 +9,19 @@ Render with a Supabase/Postgres database.
 
 ## Features
 
-- **Tasks** — create, edit, prioritise, due dates, mark done, delete.
+- **Tasks** — create, prioritise, due dates, mark done, delete, and **long-press
+  a task to edit it**.
 - **Notes** — quick notes in a card grid with an edit modal.
 - **Schedule** — week view of WebUntis timetable *changes* (cancelled / changed /
   substitution) merged with Mudo bookings.
-- **Messages** — WebUntis inbox, unread first, with a notification dot.
+- **Messages** — WebUntis inbox, unread first, with a red notification dot when
+  something is unread.
 - **Apple Reminders** — two-way sync (macOS only).
 - **Roles** — pick **Mac** (full control, runs the syncs) or **User** (tasks, notes
   & views) on open.
+- **Auto-sync (Mac role)** — choosing Mac runs all syncs immediately, then once at
+  the start of each day. Logins persist via a per-machine browser profile, so it
+  rarely re-prompts.
 - **Dark mode** — toggle in Settings, remembered per browser.
 
 > The browser-automation syncs (WebUntis, Mudo) and Apple Reminders are
@@ -29,7 +34,7 @@ Render with a Supabase/Postgres database.
 |---|---|
 | Backend | Python 3.13, FastAPI, uvicorn |
 | Storage | SQLite locally; Supabase/Postgres when `DATABASE_URL` is set |
-| Browser automation | Playwright (Chromium, headed) |
+| Browser automation | Playwright (Chromium, headed, persistent profile) |
 | Apple integration | `osascript` / JXA |
 | Frontend | Vanilla HTML/CSS/JS — single file `static/index.html` |
 | Package manager | uv |
