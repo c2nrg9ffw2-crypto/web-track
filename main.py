@@ -183,7 +183,7 @@ def delete_note(note_id: int):
 
 @app.post("/api/webuntis/sync")
 async def webuntis_sync():
-    if os.environ.get("DATABASE_URL"):
+    if os.environ.get("RENDER"):
         raise HTTPException(503, "WebUntis sync is only available on local deployment")
     loop = asyncio.get_event_loop()
     lessons, homeworks, messages = await loop.run_in_executor(_sync_executor, _run_webuntis_in_thread)
@@ -289,7 +289,7 @@ def pull_reminders():
 
 @app.post("/api/mudo/sync")
 async def mudo_sync():
-    if os.environ.get("DATABASE_URL"):
+    if os.environ.get("RENDER"):
         raise HTTPException(503, "Mudo sync is only available on local deployment")
     loop = asyncio.get_event_loop()
     bookings = await loop.run_in_executor(_sync_executor, _run_mudo_in_thread)
