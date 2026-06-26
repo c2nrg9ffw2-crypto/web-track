@@ -568,6 +568,21 @@
     if (scheduleTab && scheduleTab.classList.contains('active')) loadSchedule();
   }
 
+  function nextAutoSyncIn() {
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(next.getHours() + 1, 0, 0, 0);
+    const diff = Math.floor((next - now) / 1000);
+    const h = Math.floor(diff / 3600);
+    const m = Math.floor((diff % 3600) / 60);
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  }
+
+  function updateCountdown() {
+    const el = document.getElementById('sync-countdown');
+    if (el) el.textContent = nextAutoSyncIn();
+  }
+
   function showTab(name) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -916,7 +931,8 @@
     const mudoInWeek = mudoBookings.filter(b => weekDays.includes(b.date));
 
     if (!changes.length && !mudoInWeek.length && !allLessons.length) {
-      el.innerHTML = '<div class="empty">No data yet — click Sync WebUntis or Sync Mudo.</div>';
+      el.innerHTML = '<div class="empty">No data yet — next auto-sync in <span id="sync-countdown"></span></div>';
+      updateCountdown();
       return;
     }
 
@@ -1043,6 +1059,7 @@
   maybeAutoSync(false);  // new hour since last open? sync now (Mac role only)
   setInterval(() => maybeAutoSync(false), 5 * 60 * 1000);   // poll every 5 min to catch the hour boundary
   setInterval(autoRefresh, 60 * 60 * 1000);                 // re-fetch data every hour on all deployments
+  setInterval(updateCountdown, 60 * 1000);                  // tick the countdown every minute
 </script>
 </body>
 </html>
