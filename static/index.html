@@ -496,13 +496,17 @@
 
   // ── Role (Mac vs User) ─────────────────────────────
 
+  function isLocal() {
+    return location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  }
+
   function getRole() { return localStorage.getItem('tb_role'); }
 
   function setRole(r) {
     localStorage.setItem('tb_role', r);
     document.getElementById('role-overlay').classList.remove('open');
     applyRole();
-    if (r === 'mac') maybeAutoSync(true);  // run the syncs straight away
+    if (r === 'mac' && isLocal()) maybeAutoSync(true);
   }
 
   function openRoleChooser() {
@@ -511,7 +515,8 @@
 
   function applyRole() {
     const r = getRole() || 'user';
-    document.body.classList.toggle('role-user', r === 'user');
+    // Hide sync buttons on cloud — only show them when running locally.
+    document.body.classList.toggle('role-user', r === 'user' || !isLocal());
     const lbl = document.getElementById('role-label');
     if (lbl) lbl.textContent = r === 'mac' ? 'Mac' : 'User';
   }
@@ -542,7 +547,7 @@
   // each day the app is open. Only ever runs in the Mac role.
 
   async function autoSync() {
-    if (getRole() !== 'mac') return;
+    if (getRole() !== 'mac' || !isLocal()) return;
     // Sequential — each WebUntis/Mudo sync opens its own login browser window.
     try { await syncWebUntis(); } catch (e) {}
     try { await syncMudo(); } catch (e) {}
