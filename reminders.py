@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 import sys
 
@@ -162,3 +163,38 @@ def delete_reminder(task_id: int):
     end repeat
 end tell"""
     _run(script)
+
+
+def fetch_apple_notes() -> list[dict]:
+    """Read all notes from Apple Notes, returning title, plain-text content and apple id."""
+    script = """
+const app = Application('Notes');
+const results = [];
+for (const folder of app.folders()) {
+    for (const note of folder.notes()) {
+        results.push({
+            apple_id: note.id(),
+            title: note.name(),
+            body: note.body() || '',
+        });
+    }
+}
+JSON.stringify(results);
+"""
+    output = _run_js(script)
+    try:
+        raw = json.loads(output) if output else []
+    except Exception as e:
+        print(f"Apple Notes: could not parse output: {e}")
+        return []
+
+    notes = []
+    for item in raw:
+        content = re.sub(r'<[^>]+>', '', item.get('body', ''))
+        content = re.sub(r'\n{3,}', '\n\n', content).strip()
+        notes.append({
+            'apple_id': item['apple_id'],
+            'title': (item.get('title') or '').strip(),
+            'content': content,
+        })
+    return [n for n in notes if n['title']]

@@ -285,6 +285,34 @@ def pull_reminders():
     return {"added": added, "updated": updated}
 
 
+# --- Apple Notes pull ---
+
+@app.post("/api/apple-notes/pull")
+def pull_apple_notes():
+    items = rem.fetch_apple_notes()
+    now = datetime.now().isoformat()
+    added = updated = 0
+    with get_db() as conn:
+        for item in items:
+            apple_id = item["apple_id"]
+            existing = conn.execute(
+                "SELECT id FROM notes WHERE apple_notes_id = ?", (apple_id,)
+            ).fetchone()
+            if existing:
+                conn.execute(
+                    "UPDATE notes SET title = ?, content = ?, updated_at = ? WHERE apple_notes_id = ?",
+                    (item["title"], item["content"], now, apple_id),
+                )
+                updated += 1
+            else:
+                conn.execute(
+                    "INSERT INTO notes (title, content, created_at, updated_at, apple_notes_id) VALUES (?, ?, ?, ?, ?)",
+                    (item["title"], item["content"], now, now, apple_id),
+                )
+                added += 1
+    return {"added": added, "updated": updated}
+
+
 # --- Mudo routes ---
 
 @app.post("/api/mudo/sync")

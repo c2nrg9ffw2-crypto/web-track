@@ -376,9 +376,11 @@
       <div class="row">
         <input id="note-title" class="grow" type="text" placeholder="Note title…" onkeydown="if(event.key==='Enter')addNote()">
         <button class="btn btn-primary" onclick="addNote()">Add</button>
+        <button class="btn btn-ghost mac-only" id="apple-notes-btn" onclick="syncAppleNotes()" title="Pull all notes from Apple Notes">⟳ Apple Notes</button>
       </div>
       <div class="row">
         <textarea id="note-content" placeholder="Content (optional)…"></textarea>
+        <span id="apple-notes-status" style="font-size:0.8rem;color:var(--muted)"></span>
       </div>
     </div>
     <div id="note-grid" class="notes-grid"></div>
@@ -552,6 +554,7 @@
     try { await syncWebUntis(); } catch (e) {}
     try { await syncMudo(); } catch (e) {}
     try { await syncReminders(); } catch (e) {}
+    try { await syncAppleNotes(); } catch (e) {}
   }
 
   function maybeAutoSync(force) {
@@ -637,6 +640,22 @@
     } finally {
       btn.disabled = false;
       btn.textContent = '⟳ Reminders';
+    }
+  }
+
+  async function syncAppleNotes() {
+    const btn = document.getElementById('apple-notes-btn');
+    const status = document.getElementById('apple-notes-status');
+    if (btn) { btn.disabled = true; btn.textContent = 'Reading…'; }
+    try {
+      const result = await api('POST', '/api/apple-notes/pull');
+      const a = result.added, u = result.updated;
+      if (status) status.textContent = `${a} added, ${u} updated from Apple Notes.`;
+      loadNotes();
+    } catch (e) {
+      if (status) status.textContent = 'Failed — is the server running on macOS?';
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '⟳ Apple Notes'; }
     }
   }
 

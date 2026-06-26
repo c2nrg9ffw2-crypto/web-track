@@ -89,7 +89,8 @@ def init_db():
             title TEXT NOT NULL,
             content TEXT,
             created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
+            updated_at TEXT NOT NULL,
+            apple_notes_id TEXT
         )
         """,
         f"""
@@ -141,6 +142,7 @@ def migrate_db():
         "ALTER TABLE schedule_lessons ADD COLUMN lesson_code TEXT DEFAULT 'REGULAR'",
         "ALTER TABLE tasks ADD COLUMN webuntis_id TEXT",
         "ALTER TABLE tasks ADD COLUMN reminders_id TEXT",
+        "ALTER TABLE notes ADD COLUMN apple_notes_id TEXT",
     ]
     for stmt in statements:
         if IS_PG:
