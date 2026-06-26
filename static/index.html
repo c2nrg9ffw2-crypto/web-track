@@ -56,9 +56,32 @@
     .tab { display: none; }
     .tab.active { display: block; }
 
+    /* Dark mode — overrides the palette */
+    body.dark {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --border: #334155;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --shadow: 0 1px 4px rgba(0,0,0,0.4);
+    }
+    body.dark .msg-card.unread { background: #1e293b; }
+    body.dark .btn-ghost:hover { background: #475569; }
+
     /* Role: hide Mac-only controls when in User mode */
     body.role-user .mac-only { display: none !important; }
-    #role-chip { margin-left: auto; }
+    #settings-btn { margin-left: auto; font-size: 1.05rem; }
+
+    /* Settings */
+    .settings-h { font-size: 0.95rem; font-weight: 700; margin-bottom: 12px; }
+    .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .setting-row + .setting-row { margin-top: 12px; }
+    .switch { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .switch .slider { position: absolute; inset: 0; background: var(--border); border-radius: 999px; cursor: pointer; transition: 0.2s; }
+    .switch .slider:before { content: ''; position: absolute; height: 18px; width: 18px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: 0.2s; }
+    .switch input:checked + .slider { background: var(--primary); }
+    .switch input:checked + .slider:before { transform: translateX(20px); }
     .role-card {
       flex: 1;
       padding: 18px 14px;
@@ -313,7 +336,7 @@
     <button class="tab-btn" onclick="showTab('schedule')">Schedule</button>
     <button class="tab-btn" onclick="showTab('messages')">Messages<span id="msg-dot" class="notif-dot" style="display:none"></span><span id="unread-count"></span></button>
   </nav>
-  <button class="tab-btn" id="role-chip" onclick="openRoleChooser()" title="Switch role"></button>
+  <button class="tab-btn" id="settings-btn" onclick="showTab('settings')" title="Settings">⚙️</button>
 </header>
 
 <main>
@@ -373,6 +396,27 @@
       </div>
     </div>
     <div id="schedule-view"></div>
+  </div>
+
+  <!-- Settings -->
+  <div id="settings-tab" class="tab">
+    <div class="card">
+      <div class="settings-h">Appearance</div>
+      <label class="setting-row" style="cursor:pointer">
+        <span>Dark mode</span>
+        <span class="switch">
+          <input type="checkbox" id="dark-toggle" onchange="setDark(this.checked)">
+          <span class="slider"></span>
+        </span>
+      </label>
+    </div>
+    <div class="card">
+      <div class="settings-h">Role</div>
+      <div class="setting-row">
+        <span>Current role: <strong id="role-label">User</strong></span>
+        <button class="btn btn-ghost" onclick="openRoleChooser()">Switch role</button>
+      </div>
+    </div>
   </div>
 </main>
 
@@ -434,12 +478,29 @@
     const r = getRole() || 'user';
     document.body.classList.toggle('role-user', r === 'user');
     document.body.classList.toggle('role-mac', r === 'mac');
-    document.getElementById('role-chip').textContent = r === 'mac' ? '🖥️ Mac' : '👤 User';
+    const lbl = document.getElementById('role-label');
+    if (lbl) lbl.textContent = r === 'mac' ? 'Mac' : 'User';
   }
 
   function initRole() {
     if (!getRole()) openRoleChooser();
     applyRole();
+  }
+
+  // ── Dark mode ──────────────────────────────────────
+
+  function getDark() { return localStorage.getItem('tb_dark') === '1'; }
+
+  function setDark(on) {
+    localStorage.setItem('tb_dark', on ? '1' : '0');
+    applyDark();
+  }
+
+  function applyDark() {
+    const on = getDark();
+    document.body.classList.toggle('dark', on);
+    const t = document.getElementById('dark-toggle');
+    if (t) t.checked = on;
   }
 
   function showTab(name) {
@@ -828,6 +889,7 @@
     return new Date(iso).toLocaleDateString('en-SE', { year:'numeric', month:'short', day:'numeric' });
   }
 
+  applyDark();
   initRole();
   loadTasks();
   refreshUnread();
