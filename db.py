@@ -80,7 +80,9 @@ def init_db():
             done INTEGER DEFAULT 0,
             created_at TEXT NOT NULL,
             webuntis_id TEXT,
-            reminders_id TEXT
+            reminders_id TEXT,
+            created_by TEXT,
+            assigned_to TEXT
         )
         """,
         f"""
@@ -90,7 +92,8 @@ def init_db():
             content TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
-            apple_notes_id TEXT
+            apple_notes_id TEXT,
+            created_by TEXT
         )
         """,
         f"""
@@ -143,6 +146,9 @@ def migrate_db():
         "ALTER TABLE tasks ADD COLUMN webuntis_id TEXT",
         "ALTER TABLE tasks ADD COLUMN reminders_id TEXT",
         "ALTER TABLE notes ADD COLUMN apple_notes_id TEXT",
+        "ALTER TABLE tasks ADD COLUMN created_by TEXT",
+        "ALTER TABLE tasks ADD COLUMN assigned_to TEXT",
+        "ALTER TABLE notes ADD COLUMN created_by TEXT",
     ]
     for stmt in statements:
         if IS_PG:

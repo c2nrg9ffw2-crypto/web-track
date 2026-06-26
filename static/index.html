@@ -332,6 +332,34 @@
       background: #ef4444; border-radius: 50%;
       margin-left: 5px; vertical-align: middle;
     }
+
+    /* Name prompt */
+    .name-prompt-backdrop {
+      position: fixed; inset: 0;
+      background: rgba(15,23,42,0.55);
+      z-index: 200;
+      display: flex; align-items: center; justify-content: center; padding: 16px;
+    }
+    .name-prompt-box {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 32px 28px;
+      width: 100%; max-width: 360px;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.2);
+      text-align: center;
+    }
+    .name-prompt-box h2 { font-size: 1.1rem; margin-bottom: 8px; }
+    .name-prompt-box p { font-size: 0.85rem; color: var(--muted); margin-bottom: 18px; }
+    .name-prompt-box input { width: 100%; margin-bottom: 12px; }
+
+    /* Team badges */
+    .badge-person { background: #e0e7ff; color: #3730a3; }
+    .badge-assigned { background: #f0fdf4; color: #15803d; }
+    .note-author { font-size: 0.72rem; color: var(--muted); margin-top: 6px; }
+
+    /* Task filter bar */
+    .filter-bar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+    .filter-bar label { font-size: 0.82rem; color: var(--muted); }
   </style>
 </head>
 <body>
@@ -364,8 +392,17 @@
       </div>
       <div class="row">
         <input id="task-desc" class="grow" type="text" placeholder="Description (optional)">
+        <input id="task-assign" type="text" placeholder="Assign to…" style="width:140px">
         <span id="rem-status" style="font-size:0.8rem;color:var(--muted)"></span>
       </div>
+    </div>
+    <div class="filter-bar">
+      <label>Show:</label>
+      <select id="task-filter" onchange="loadTasks()">
+        <option value="all">All tasks</option>
+        <option value="mine">Mine</option>
+        <option value="unassigned">Unassigned</option>
+      </select>
     </div>
     <div id="task-list"></div>
   </div>
@@ -430,6 +467,16 @@
   </div>
 </main>
 
+<!-- Name prompt -->
+<div id="name-prompt" style="display:none" class="name-prompt-backdrop">
+  <div class="name-prompt-box">
+    <h2>Welcome to TaskBoard</h2>
+    <p>What's your name? So the team knows who added what.</p>
+    <input id="name-input" type="text" placeholder="Your name…" onkeydown="if(event.key==='Enter')saveName()">
+    <button class="btn btn-primary" style="width:100%" onclick="saveName()">Continue</button>
+  </div>
+</div>
+
 <!-- Role chooser -->
 <div id="role-overlay" class="overlay" onclick="if(event.target===this && getRole())this.classList.remove('open')">
   <div class="modal" style="max-width:440px">
@@ -479,6 +526,7 @@
         <option value="high">High</option>
       </select>
       <input id="task-modal-due" type="date">
+      <input id="task-modal-assign" type="text" placeholder="Assign to…" style="flex:1">
     </div>
     <div class="modal-footer">
       <button class="btn-danger-text" onclick="deleteTaskModal()">Delete</button>
@@ -500,6 +548,25 @@
 
   function isLocal() {
     return location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  }
+
+  // ── Name (team identity) ───────────────────────────
+  function getMyName() { return localStorage.getItem('tb_name') || ''; }
+
+  function saveName() {
+    const name = document.getElementById('name-input').value.trim();
+    if (!name) return;
+    localStorage.setItem('tb_name', name);
+    document.getElementById('name-prompt').style.display = 'none';
+    document.getElementById('task-assign').placeholder = `Assign to… (you: ${name})`;
+  }
+
+  function initName() {
+    if (!getMyName()) {
+      document.getElementById('name-prompt').style.display = 'flex';
+    } else {
+      document.getElementById('task-assign').placeholder = `Assign to… (you: ${getMyName()})`;
+    }
   }
 
   function getRole() { return localStorage.getItem('tb_role'); }
@@ -599,8 +666,15 @@
   // ── Tasks ──────────────────────────────────────────
 
   async function loadTasks() {
-    const tasks = await api('GET', '/api/tasks');
-    tasksCache = Object.fromEntries(tasks.map(t => [t.id, t]));
+    const all = await api('GET', '/api/tasks');
+    tasksCache = Object.fromEntries(all.map(t => [t.id, t]));
+    const filter = document.getElementById('task-filter')?.value || 'all';
+    const me = getMyName();
+    const tasks = all.filter(t => {
+      if (filter === 'mine') return (t.assigned_to || t.created_by || '') === me || t.assigned_to === me;
+      if (filter === 'unassigned') return !t.assigned_to;
+      return true;
+    });
     const el = document.getElementById('task-list');
     if (!tasks.length) {
       el.innerHTML = '<div class="empty">No tasks yet — add one above.</div>';
@@ -618,6 +692,8 @@
             ${t.due_date ? `<span class="badge badge-date">Due ${t.due_date}</span>` : ''}
             ${t.webuntis_id ? `<span class="badge badge-homework">Homework</span>` : ''}
             ${t.reminders_id ? `<span class="badge" style="background:#fce7f3;color:#9d174d">Reminder</span>` : ''}
+            ${t.assigned_to ? `<span class="badge badge-assigned">→ ${esc(t.assigned_to)}</span>` : ''}
+            ${t.created_by && !t.assigned_to ? `<span class="badge badge-person">${esc(t.created_by)}</span>` : ''}
           </div>
         </div>
         <button class="btn-danger-text" onclick="deleteTask(${t.id})">✕</button>
@@ -662,13 +738,16 @@
   async function addTask() {
     const title = val('task-title');
     if (!title) return;
+    const assignTo = val('task-assign') || null;
     await api('POST', '/api/tasks', {
       title,
       description: val('task-desc') || null,
       priority: document.getElementById('task-priority').value,
       due_date: val('task-due') || null,
+      created_by: getMyName() || null,
+      assigned_to: assignTo,
     });
-    clear('task-title', 'task-desc', 'task-due');
+    clear('task-title', 'task-desc', 'task-due', 'task-assign');
     loadTasks();
   }
 
@@ -692,6 +771,7 @@
     document.getElementById('task-modal-desc').value = t.description || '';
     document.getElementById('task-modal-priority').value = t.priority || 'medium';
     document.getElementById('task-modal-due').value = t.due_date || '';
+    document.getElementById('task-modal-assign').value = t.assigned_to || '';
     document.getElementById('task-overlay').classList.add('open');
   }
 
@@ -710,6 +790,7 @@
       description: document.getElementById('task-modal-desc').value.trim(),
       priority: document.getElementById('task-modal-priority').value,
       due_date: document.getElementById('task-modal-due').value,
+      assigned_to: document.getElementById('task-modal-assign').value.trim() || null,
     });
     closeTaskModal();
     loadTasks();
@@ -772,6 +853,7 @@
         <div class="note-title">${esc(n.title)}</div>
         ${n.content ? `<div class="note-preview">${esc(n.content)}</div>` : ''}
         <div class="note-date">${fmtDate(n.updated_at)}</div>
+        ${n.created_by ? `<div class="note-author">${esc(n.created_by)}</div>` : ''}
       </div>
     `).join('');
   }
@@ -782,6 +864,7 @@
     await api('POST', '/api/notes', {
       title,
       content: val('note-content') || null,
+      created_by: getMyName() || null,
     });
     clear('note-title', 'note-content');
     loadNotes();
@@ -1073,6 +1156,7 @@
 
   applyDark();
   initRole();
+  initName();
   loadTasks();
   refreshUnread();
   maybeAutoSync(false);  // new hour since last open? sync now (Mac role only)

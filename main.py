@@ -43,7 +43,7 @@ def _run_webuntis_in_thread():
         loop.close()
 
 
-TASK_FIELDS = {"title", "description", "due_date", "priority", "done"}
+TASK_FIELDS = {"title", "description", "due_date", "priority", "done", "assigned_to"}
 NOTE_FIELDS = {"title", "content"}
 
 
@@ -64,6 +64,8 @@ class TaskCreate(BaseModel):
     description: Optional[str] = None
     due_date: Optional[str] = None
     priority: str = "medium"
+    created_by: Optional[str] = None
+    assigned_to: Optional[str] = None
 
 
 class TaskUpdate(BaseModel):
@@ -72,11 +74,13 @@ class TaskUpdate(BaseModel):
     due_date: Optional[str] = None
     priority: Optional[str] = None
     done: Optional[bool] = None
+    assigned_to: Optional[str] = None
 
 
 class NoteCreate(BaseModel):
     title: str
     content: Optional[str] = None
+    created_by: Optional[str] = None
 
 
 class NoteUpdate(BaseModel):
@@ -100,8 +104,8 @@ def create_task(task: TaskCreate):
     now = datetime.now().isoformat()
     with get_db() as conn:
         row = conn.execute(
-            "INSERT INTO tasks (title, description, due_date, priority, created_at) VALUES (?, ?, ?, ?, ?) RETURNING *",
-            (task.title, task.description, task.due_date, task.priority, now),
+            "INSERT INTO tasks (title, description, due_date, priority, created_at, created_by, assigned_to) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *",
+            (task.title, task.description, task.due_date, task.priority, now, task.created_by, task.assigned_to),
         ).fetchone()
     rem.create_reminder(row["id"], row["title"], row["due_date"], row["description"])
     return dict(row)
@@ -153,8 +157,8 @@ def create_note(note: NoteCreate):
     now = datetime.now().isoformat()
     with get_db() as conn:
         row = conn.execute(
-            "INSERT INTO notes (title, content, created_at, updated_at) VALUES (?, ?, ?, ?) RETURNING *",
-            (note.title, note.content, now, now),
+            "INSERT INTO notes (title, content, created_at, updated_at, created_by) VALUES (?, ?, ?, ?, ?) RETURNING *",
+            (note.title, note.content, now, now, note.created_by),
         ).fetchone()
         return dict(row)
 
