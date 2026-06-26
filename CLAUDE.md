@@ -12,7 +12,7 @@ A personal productivity web app. It tracks tasks, notes, a school timetable fetc
 |---|---|
 | Backend | Python 3.13, FastAPI, uvicorn |
 | Storage | SQLite at `~/.local/share/taskboard/data.db` locally; Supabase/Postgres when `DATABASE_URL` is set (see `db.py`) |
-| Browser automation | Playwright (Chromium, headed) |
+| Browser automation | Playwright (Chromium, headed, persistent profile) |
 | Apple integration | `osascript` / JXA — no extra packages needed |
 | Frontend | Vanilla HTML/CSS/JS — single file `static/index.html` |
 | Package manager | uv |
@@ -34,7 +34,7 @@ WEBUNTIS.md          # WebUntis integration documentation
 DEPLOY.md            # Render + Supabase deployment guide
 ```
 
-Data is stored outside the project directory in `~/.local/share/taskboard/data.db` so it is never accidentally committed.
+Data is stored outside the project directory in `~/.local/share/taskboard/data.db` so it is never accidentally committed. The same directory holds `browser-profiles/{webuntis,mudo}` — persistent Playwright profiles that keep the WebUntis/Mudo logins alive between syncs.
 
 ## How to run
 

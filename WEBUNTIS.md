@@ -14,8 +14,8 @@ All logic lives in `webuntis.py`, triggered by `POST /api/webuntis/sync` in `mai
 
 ### Step-by-step
 
-1. **Open browser** — Playwright launches a visible (headed) Chromium window and navigates to the DSS WebUntis login page.
-2. **User logs in** — The app waits up to 5 minutes for the page to be back on `webuntis.com` with no `login` in the URL hash. This handles Office 365 SSO redirects, which temporarily leave the webuntis.com domain.
+1. **Open browser** — Playwright launches a visible (headed) Chromium window using a **persistent profile** (`launch_persistent_context`) stored at `~/.local/share/taskboard/browser-profiles/webuntis`, and navigates to the DSS WebUntis login page. Because the profile persists cookies and localStorage between runs, an existing valid session is reused and login is skipped.
+2. **User logs in (if needed)** — If the session has expired, the app waits up to 5 minutes for the page to be back on `webuntis.com` with no `login` in the URL hash. This handles Office 365 SSO redirects, which temporarily leave the webuntis.com domain. With a valid persisted session this step passes immediately.
 3. **Read session** — Waits for the network to go idle (`networkidle`), then a 2-second pause to let the session fully settle.
 4. **Get user identity** — Reads the JWT from `localStorage.tokenString` (WebUntis stores auth tokens in localStorage, not cookies). Calls `GET /WebUntis/api/rest/view/v1/app/data` with `Authorization: Bearer <token>`. Extracts `elemId` (student ID) and `elemType` from the response.
 5. **Fetch timetable** — Calls `GET /WebUntis/api/public/timetable/weekly/data` four times: current week + 3 weeks ahead. Each call uses `elementType`, `elementId`, `date` (Monday of the week), and `formatId=1`.

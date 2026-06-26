@@ -1,17 +1,22 @@
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from playwright.async_api import async_playwright
 
 SCHOOL_URL = "https://dss.webuntis.com/WebUntis/?school=dss#/basic/login"
 BASE_URL = "https://dss.webuntis.com"
 
+# Persistent browser profile so the WebUntis session (token in localStorage)
+# survives between runs — avoids logging in on every sync.
+PROFILE_DIR = Path.home() / ".local" / "share" / "taskboard" / "browser-profiles" / "webuntis"
+
 
 async def sync_all() -> tuple[list[dict], list[dict], list[dict]]:
     """Open a browser, wait for login, then fetch schedule and homeworks."""
+    PROFILE_DIR.mkdir(parents=True, exist_ok=True)
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(headless=False)
-        ctx = await browser.new_context()
-        page = await ctx.new_page()
+        ctx = await pw.chromium.launch_persistent_context(str(PROFILE_DIR), headless=False)
+        page = ctx.pages[0] if ctx.pages else await ctx.new_page()
 
         await page.goto(SCHOOL_URL)
         await page.wait_for_function(
@@ -36,7 +41,7 @@ async def sync_all() -> tuple[list[dict], list[dict], list[dict]]:
         homeworks = await _fetch_homeworks(page, auth)
         messages = await _fetch_messages(page, auth)
 
-        await browser.close()
+        await ctx.close()
 
     return lessons, homeworks, messages
 

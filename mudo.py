@@ -1,9 +1,13 @@
 import re
 from datetime import date, timedelta
+from pathlib import Path
 
 from playwright.async_api import async_playwright
 
 MUDO_URL = "https://mudo.se/odenplan-barn-rott"
+
+# Persistent browser profile so the Mudo login (cookies) survives between runs.
+PROFILE_DIR = Path.home() / ".local" / "share" / "taskboard" / "browser-profiles" / "mudo"
 
 _MONTHS = {
     'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'maj': 5, 'jun': 6,
@@ -39,10 +43,10 @@ def _parse_date_time(text: str) -> tuple[str, str]:
 
 
 async def sync_bookings() -> list[dict]:
+    PROFILE_DIR.mkdir(parents=True, exist_ok=True)
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(headless=False)
-        ctx = await browser.new_context()
-        page = await ctx.new_page()
+        ctx = await pw.chromium.launch_persistent_context(str(PROFILE_DIR), headless=False)
+        page = ctx.pages[0] if ctx.pages else await ctx.new_page()
 
         await page.goto(MUDO_URL)
         await page.wait_for_load_state('networkidle')
@@ -68,7 +72,7 @@ async def sync_bookings() -> list[dict]:
             await page.wait_for_load_state('networkidle')
             await page.wait_for_timeout(800)
 
-        await browser.close()
+        await ctx.close()
     return bookings
 
 
