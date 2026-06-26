@@ -1,13 +1,13 @@
 import asyncio
-import sqlite3
+import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import asynccontextmanager
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
 
 import reminders as rem
+from db import get_db, init_db, migrate_db
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -43,91 +43,8 @@ def _run_webuntis_in_thread():
         loop.close()
 
 
-DB_PATH = Path.home() / ".local" / "share" / "taskboard" / "data.db"
-
 TASK_FIELDS = {"title", "description", "due_date", "priority", "done"}
 NOTE_FIELDS = {"title", "content"}
-
-
-@contextmanager
-def get_db():
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def init_db():
-    with get_db() as conn:
-        conn.executescript("""
-            CREATE TABLE IF NOT EXISTS tasks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                description TEXT,
-                due_date TEXT,
-                priority TEXT DEFAULT 'medium',
-                done INTEGER DEFAULT 0,
-                created_at TEXT NOT NULL,
-                webuntis_id TEXT,
-                reminders_id TEXT
-            );
-            CREATE TABLE IF NOT EXISTS notes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                content TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS schedule_lessons (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                date TEXT NOT NULL,
-                start_time TEXT NOT NULL,
-                end_time TEXT NOT NULL,
-                subject TEXT,
-                teacher TEXT,
-                room TEXT,
-                cancelled INTEGER DEFAULT 0,
-                lesson_code TEXT DEFAULT 'REGULAR',
-                synced_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS messages (
-                id INTEGER PRIMARY KEY,
-                subject TEXT,
-                body TEXT,
-                sender TEXT,
-                sent_at TEXT,
-                is_read INTEGER DEFAULT 0,
-                synced_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS mudo_bookings (
-                id TEXT PRIMARY KEY,
-                date TEXT NOT NULL,
-                start_time TEXT NOT NULL,
-                duration_min INTEGER,
-                title TEXT NOT NULL,
-                instructors TEXT,
-                room TEXT,
-                status TEXT NOT NULL,
-                synced_at TEXT NOT NULL
-            );
-        """)
-
-
-def migrate_db():
-    with get_db() as conn:
-        for stmt in [
-            "ALTER TABLE schedule_lessons ADD COLUMN lesson_code TEXT DEFAULT 'REGULAR'",
-            "ALTER TABLE tasks ADD COLUMN webuntis_id TEXT",
-            "ALTER TABLE tasks ADD COLUMN reminders_id TEXT",
-        ]:
-            try:
-                conn.execute(stmt)
-            except Exception:
-                pass
 
 
 @asynccontextmanager
@@ -182,11 +99,10 @@ def list_tasks():
 def create_task(task: TaskCreate):
     now = datetime.now().isoformat()
     with get_db() as conn:
-        cur = conn.execute(
-            "INSERT INTO tasks (title, description, due_date, priority, created_at) VALUES (?, ?, ?, ?, ?)",
+        row = conn.execute(
+            "INSERT INTO tasks (title, description, due_date, priority, created_at) VALUES (?, ?, ?, ?, ?) RETURNING *",
             (task.title, task.description, task.due_date, task.priority, now),
-        )
-        row = conn.execute("SELECT * FROM tasks WHERE id = ?", (cur.lastrowid,)).fetchone()
+        ).fetchone()
     rem.create_reminder(row["id"], row["title"], row["due_date"], row["description"])
     return dict(row)
 
@@ -236,11 +152,10 @@ def list_notes():
 def create_note(note: NoteCreate):
     now = datetime.now().isoformat()
     with get_db() as conn:
-        cur = conn.execute(
-            "INSERT INTO notes (title, content, created_at, updated_at) VALUES (?, ?, ?, ?)",
+        row = conn.execute(
+            "INSERT INTO notes (title, content, created_at, updated_at) VALUES (?, ?, ?, ?) RETURNING *",
             (note.title, note.content, now, now),
-        )
-        row = conn.execute("SELECT * FROM notes WHERE id = ?", (cur.lastrowid,)).fetchone()
+        ).fetchone()
         return dict(row)
 
 
@@ -290,11 +205,11 @@ async def webuntis_sync():
                 rem.update_reminder(existing["id"], title=hw["title"], due_date=hw["due_date"])
                 updated_count += 1
             else:
-                cur = conn.execute(
-                    "INSERT INTO tasks (title, description, due_date, priority, done, created_at, webuntis_id) VALUES (?, ?, ?, ?, 0, ?, ?)",
+                new_row = conn.execute(
+                    "INSERT INTO tasks (title, description, due_date, priority, done, created_at, webuntis_id) VALUES (?, ?, ?, ?, 0, ?, ?) RETURNING id",
                     (hw["title"], hw["description"], hw["due_date"], hw["priority"], now, hw["webuntis_id"]),
-                )
-                rem.create_reminder(cur.lastrowid, hw["title"], hw["due_date"], hw["description"])
+                ).fetchone()
+                rem.create_reminder(new_row["id"], hw["title"], hw["due_date"], hw["description"])
                 new_count += 1
         conn.execute("DELETE FROM messages")
         conn.executemany(
@@ -359,11 +274,11 @@ def pull_reminders():
                 )
                 updated += 1
             else:
-                cur = conn.execute(
-                    "INSERT INTO tasks (title, description, due_date, priority, done, created_at, reminders_id) VALUES (?, ?, ?, 'medium', 0, ?, ?)",
+                new_row = conn.execute(
+                    "INSERT INTO tasks (title, description, due_date, priority, done, created_at, reminders_id) VALUES (?, ?, ?, 'medium', 0, ?, ?) RETURNING id",
                     (item["name"], item["notes"], item["due"], now, apple_id),
-                )
-                rem.tag_reminder(item["list"], item["name"], cur.lastrowid)
+                ).fetchone()
+                rem.tag_reminder(item["list"], item["name"], new_row["id"])
                 added += 1
     return {"added": added, "updated": updated}
 
@@ -410,4 +325,7 @@ def index():
 
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    port = int(os.environ.get("PORT", 8000))
+    # No file-watch reload in the cloud (Render sets $PORT); reload locally.
+    reload = "PORT" not in os.environ
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=reload)

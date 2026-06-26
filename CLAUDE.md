@@ -11,7 +11,7 @@ A personal productivity web app that runs as a local server on macOS. It tracks 
 | Layer | Tool |
 |---|---|
 | Backend | Python 3.13, FastAPI, uvicorn |
-| Storage | SQLite at `~/.local/share/taskboard/data.db` |
+| Storage | SQLite at `~/.local/share/taskboard/data.db` locally; Supabase/Postgres when `DATABASE_URL` is set (see `db.py`) |
 | Browser automation | Playwright (Chromium, headed) |
 | Apple integration | `osascript` / JXA — no extra packages needed |
 | Frontend | Vanilla HTML/CSS/JS — single file `static/index.html` |
@@ -20,14 +20,18 @@ A personal productivity web app that runs as a local server on macOS. It tracks 
 ## File structure
 
 ```
-main.py              # FastAPI app — all routes, DB init, models
+main.py              # FastAPI app — all routes and models
+db.py                # DB layer — SQLite locally or Supabase/Postgres via DATABASE_URL
 webuntis.py          # Playwright automation for syncing the timetable + messages
 mudo.py              # Playwright automation for syncing Mudo.se training bookings
 reminders.py         # Apple Reminders integration via osascript / JXA
 static/index.html    # Entire frontend (HTML + CSS + JS in one file)
 pyproject.toml       # Dependencies and project metadata
+requirements.txt     # Cloud (Render) dependencies — no Playwright
+render.yaml          # Render Blueprint (build/start commands, env vars)
 INTERFACE.md         # Frontend / UI documentation
 WEBUNTIS.md          # WebUntis integration documentation
+DEPLOY.md            # Render + Supabase deployment guide
 ```
 
 Data is stored outside the project directory in `~/.local/share/taskboard/data.db` so it is never accidentally committed.
@@ -67,7 +71,11 @@ Five tables, all created automatically on first run by `init_db()`.
 
 ### Adding new DB columns
 
-New columns go in `CREATE TABLE IF NOT EXISTS` inside `init_db()` **and** as an `ALTER TABLE` statement inside `migrate_db()`. `migrate_db()` catches and ignores the "column already exists" error, so it is safe to re-run. Both functions are called on startup via the `lifespan` handler.
+New columns go in `init_db()` **and** as an `ALTER TABLE` statement inside `migrate_db()` (both in `db.py`). `migrate_db()` is safe to re-run: on Postgres it uses `ADD COLUMN IF NOT EXISTS`, on SQLite it catches and ignores the "column already exists" error. Both functions are called on startup via the `lifespan` handler.
+
+### SQLite vs. Postgres
+
+`db.py` picks the backend from `DATABASE_URL` (Postgres when set, else SQLite) and exposes a `get_db()` wrapper that translates `?` placeholders to `%s` for Postgres. Write SQL with `?` placeholders. For inserts that need the new row, use `RETURNING *` / `RETURNING id` and `.fetchone()` (works on both backends) rather than `cursor.lastrowid` (SQLite-only). See `DEPLOY.md` for Render + Supabase setup.
 
 ## API endpoints
 

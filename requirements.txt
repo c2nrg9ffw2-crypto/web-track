@@ -1,0 +1,6 @@
+# Dependencies for the Render (cloud) deployment.
+# Playwright is intentionally omitted: WebUntis/Mudo sync needs a real browser
+# and your interactive login, so it only runs locally on your Mac, not here.
+fastapi>=0.138.0
+uvicorn[standard]>=0.49.0
+psycopg[binary]>=3.2.0
