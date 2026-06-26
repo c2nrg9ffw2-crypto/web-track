@@ -470,6 +470,7 @@
     localStorage.setItem('tb_role', r);
     document.getElementById('role-overlay').classList.remove('open');
     applyRole();
+    if (r === 'mac') maybeAutoSync(true);  // run the syncs straight away
   }
 
   function openRoleChooser() {
@@ -502,6 +503,26 @@
     document.body.classList.toggle('dark', on);
     const t = document.getElementById('dark-toggle');
     if (t) t.checked = on;
+  }
+
+  // ── Auto-sync (Mac role) ───────────────────────────
+  // Runs the syncs immediately when Mac is chosen, then once at the start of
+  // each day the app is open. Only ever runs in the Mac role.
+
+  async function autoSync() {
+    if (getRole() !== 'mac') return;
+    // Sequential — each WebUntis/Mudo sync opens its own login browser window.
+    try { await syncWebUntis(); } catch (e) {}
+    try { await syncMudo(); } catch (e) {}
+    try { await syncReminders(); } catch (e) {}
+  }
+
+  function maybeAutoSync(force) {
+    if (getRole() !== 'mac') return;
+    const today = new Date().toLocaleDateString('en-CA');  // local YYYY-MM-DD
+    if (!force && localStorage.getItem('tb_last_autosync') === today) return;
+    localStorage.setItem('tb_last_autosync', today);
+    autoSync();
   }
 
   function showTab(name) {
@@ -899,6 +920,8 @@
   initRole();
   loadTasks();
   refreshUnread();
+  maybeAutoSync(false);  // new day since last open? sync now (Mac role only)
+  setInterval(() => maybeAutoSync(false), 15 * 60 * 1000);  // catch the day rollover while open
 </script>
 </body>
 </html>

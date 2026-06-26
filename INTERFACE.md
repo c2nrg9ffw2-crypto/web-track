@@ -25,6 +25,8 @@ On first load a modal asks **"Who's using TaskBoard?"** with two choices:
 
 The choice is stored in `localStorage` (`tb_role`) so it is only asked once per browser. It can be changed any time from **Settings → Role**. Hiding the sync controls in User mode is a UI convenience only — the API endpoints still exist; it is not a security boundary.
 
+**Auto-sync (Mac role only).** Choosing Mac runs all syncs (WebUntis → Mudo → Reminders) immediately, and they re-run automatically once at the start of each day the app is open. The last auto-sync date is stored in `localStorage` (`tb_last_autosync`); on load and every 15 minutes the app compares it to today's local date and re-syncs if it is a new day. Because the WebUntis/Mudo syncs open a login browser window, this only makes sense — and only runs — in the Mac role. See `autoSync()` / `maybeAutoSync()`.
+
 ## Tasks tab
 
 **Adding a task**
@@ -123,6 +125,7 @@ All JS is at the bottom of `static/index.html` inside a single `<script>` tag.
 |---|---|
 | `showTab(name)` | Switch active tab, trigger lazy load |
 | `getRole()`, `setRole()`, `applyRole()`, `initRole()`, `openRoleChooser()` | Role (Mac/User) state — toggles `body.role-user`, persists `tb_role` |
+| `autoSync()`, `maybeAutoSync(force)` | Mac role: run all syncs on selection and once per day (`tb_last_autosync`) |
 | `getDark()`, `setDark()`, `applyDark()` | Dark-mode state — toggles `body.dark`, persists `tb_dark` |
 | `loadTasks()`, `addTask()`, `toggleTask()`, `deleteTask()` | Task CRUD |
 | `syncReminders()` | Pull all Apple Reminders into the task list |
@@ -146,6 +149,7 @@ On load the script runs `applyDark()`, `initRole()`, `loadTasks()`, and `refresh
 |---|---|---|
 | `tb_role` | `mac` / `user` | role chooser |
 | `tb_dark` | `1` / `0` | dark-mode toggle |
+| `tb_last_autosync` | local `YYYY-MM-DD` | last day auto-sync ran (Mac role) |
 
 ## State held in JS
 
