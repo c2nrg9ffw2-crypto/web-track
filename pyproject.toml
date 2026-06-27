@@ -1,7 +1,7 @@
 [project]
-name = "webuntis"
+name = "taskboard"
 version = "0.1.0"
-description = "Add your description here"
+description = "Personal productivity app — tasks, notes, schedule, Mudo, Apple Reminders"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
